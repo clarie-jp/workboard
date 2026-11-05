@@ -184,6 +184,32 @@ img{max-width:100%}
 .grid4.tight{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
 .qr{width:192px;padding:8px;background:#fff;border-radius:12px}
 .qr img,.qr canvas{display:block}
+.pill.bad{background:rgba(255,59,48,.14);color:var(--bad)}
+.pill.warn{background:rgba(255,159,10,.16);color:var(--warn)}
+.remind{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.trow{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid var(--line);min-width:0}
+.trow:first-child{border-top:none}
+.trow .grow{flex:1;min-width:0}
+.trow .tt{font-weight:600;overflow-wrap:anywhere}
+.trow.done .tt{text-decoration:line-through;color:var(--muted)}
+.trow .tn{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.trow .tm{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:6px;font-size:13px}
+.chk{width:26px;height:26px;border-radius:50%;border:2px solid var(--faint);background:transparent;cursor:pointer;flex:none;margin-top:1px;display:grid;place-items:center;color:#fff;font-size:14px;line-height:1}
+.chk[aria-pressed="true"]{background:var(--good-ring);border-color:var(--good-ring)}
+.tsec{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em;margin-top:6px}
+.tdue{width:auto;padding:4px 8px;font-size:13px}
+.pinwrap{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.45);display:grid;place-items:center;padding:16px}
+.pinbox{background:var(--surface);border-radius:24px;padding:24px;width:min(360px,100%);display:grid;gap:16px;justify-items:center;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.pinbox .nm{font-family:var(--display);font-size:24px;font-weight:700}
+.dots{display:flex;gap:14px}
+.dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--faint)}
+.dots i.on{background:var(--fg);border-color:var(--fg)}
+.pinerr{color:var(--bad);font-size:13px;min-height:18px}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%}
+.key{height:60px;border:none;border-radius:16px;background:var(--surface2);font-size:24px;font-weight:600;cursor:pointer;color:var(--fg)}
+.key.sm{font-size:14px;font-weight:500}
+.key:active{background:var(--accent-soft)}
+.remember{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
 .qcard{background:#fff;color:#1d1d1f;border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:10px;justify-items:center;text-align:center;break-inside:avoid}
 .qcard .nm{font-family:var(--display);font-size:22px;font-weight:700}
@@ -229,6 +255,8 @@ const TARGET = {unisound: 80000, mansion: 600000};
 const TYPE = {unisound: {name: 'UNISOUND', unit: '1件あたり', cls: 'u'}, mansion: {name: 'マンション買取', unit: '1人あたり', cls: 'm'}};
 const TASKS = ['出品', '梱包', '発送', '整理'];
 const STORES = ['相模原', '新山下'];
+const OFFICE_PLACES = ['相模原', '本社', '新山下'];
+const ROLE_NAMES = {buyer: '社員（バイヤー）', office: '社員（管理）', part: 'アルバイト'};
 const BREAKS = [0, 15, 30, 45, 60, 90, 120];
 
 const pad = n => String(n).padStart(2, '0');
@@ -253,9 +281,10 @@ const CARD_ID = (new URLSearchParams(location.search).get('s') || '').slice(0, 6
 const S = {
   isAdmin: false, key: '', url: location.origin + location.pathname, demo: false,
   status: 'loading', card: CARD_ID, staffId: CARD_ID || store.get('me', ''), peek: store.get('peek', ''), cardsFor: '',
-  staff: [], att: [], logs: [], appos: [],
+  staff: [], att: [], logs: [], appos: [], tasks: [], migrate: false,
+  session: false, pin: null, remember: false, lastAct: Date.now(), reminded: '',
   date: todayStr(), view: 'me', adminTab: store.get('adminTab', 'now'),
-  draft: {task: '出品', hours: '1', count: '', appoType: 'unisound', appoTitle: '', regName: '', regRole: 'part', regStore: '相模原', addName: '', addRole: 'part', addStore: '相模原'},
+  draft: {task: '出品', hours: '1', count: '', appoType: 'unisound', appoTitle: '', regName: '', regRole: 'part', regStore: '相模原', regOther: '', addName: '', addRole: 'part', addStore: '相模原', addOther: '', taskTitle: '', taskNote: '', taskDue: todayStr(), taskTime: ''},
   confirm: null, busy: 0, loadedMonth: null
 };
 
@@ -267,7 +296,7 @@ const params = new URLSearchParams(location.search);
 const ZERO = '00000000-0000-0000-0000-000000000000';
 const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
 async function sha256(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
-const TABLES = ['staff', 'attendance', 'logs', 'appos', 'profits'];
+const TABLES = ['staff', 'attendance', 'logs', 'appos', 'profits', 'tasks'];
 
 function supabaseDb() {
   const c = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
@@ -278,7 +307,7 @@ function supabaseDb() {
     async insertIgnore(t, row) { chk(await c.from(t).upsert(row, {onConflict: 'id', ignoreDuplicates: true})); },
     async update(t, id, p) { chk(await c.from(t).update(p).eq('id', id)); },
     async remove(t, id) { chk(await c.from(t).delete().eq('id', id)); },
-    subscribe(cb) { const ch = c.channel('workboard'); TABLES.forEach(t => ch.on('postgres_changes', {event: '*', schema: 'public', table: t}, cb)); ch.subscribe(); }
+    subscribe(cb) { const ch = c.channel('workboard'); TABLES.slice(0, 5).forEach(t => ch.on('postgres_changes', {event: '*', schema: 'public', table: t}, cb)); ch.subscribe(); try { c.channel('workboard-tasks').on('postgres_changes', {event: '*', schema: 'public', table: 'tasks'}, cb).subscribe(); } catch (e) {} }
   };
 }
 function localDb() {
@@ -300,33 +329,56 @@ async function loadData() {
   const m = month(S.date);
   const f = S.isAdmin ? {month: m} : {month: m, staff_id: S.staffId || ZERO};
   const [staff, att, logs, appos, profits] = await Promise.all([db.select('staff', {}), db.select('attendance', f), db.select('logs', f), db.select('appos', f), db.select('profits', f)]);
+  let tasks = [], migrate = !S.demo && staff.length > 0 && !('pin_hash' in staff[0]);
+  try { tasks = await db.select('tasks', S.isAdmin ? {} : {staff_id: S.staffId || ZERO}); } catch (e) { migrate = true; }
+  S.migrate = migrate;
   return {
     month: m,
-    staff: staff.map(s => ({id: s.id, name: s.name, role: s.role, store: s.store || '', active: s.active !== false, createdAt: Number(s.created_at) || 0})),
-    att: att.map(a => ({id: a.id, staffId: a.staff_id, date: a.date, in: a.clock_in || '', out: a.clock_out || '', breakMin: Number(a.break_min) || 0, nowLabel: a.now_label || '', nowSince: a.now_since || ''})),
+    staff: staff.map(s => ({id: s.id, name: s.name, role: s.role, store: s.store || '', active: s.active !== false, pinHash: s.pin_hash || '', createdAt: Number(s.created_at) || 0})),
+    att: att.map(a => ({id: a.id, staffId: a.staff_id, date: a.date, in: a.clock_in || '', out: a.clock_out || '', breakMin: Number(a.break_min) || 0, nowLabel: a.now_label || '', nowSince: a.now_since || '', place: a.place || ''})),
+    tasks: tasks.map(t => ({id: t.id, staffId: t.staff_id, title: t.title || '', note: t.note || '', dueDate: t.due_date || '', dueTime: t.due_time || '', done: !!t.done, doneAt: Number(t.done_at) || 0, createdAt: Number(t.created_at) || 0})),
     logs: logs.map(l => ({id: l.id, staffId: l.staff_id, date: l.date, task: l.task, hours: Number(l.hours) || 0, count: Number(l.count) || 0, createdAt: Number(l.created_at) || 0})),
     appos: appos.map(a => ({id: a.id, staffId: a.staff_id, date: a.date, type: a.type, title: a.title || '', target: Number(a.target) || 0, createdAt: Number(a.created_at) || 0,
       profits: profits.filter(p => p.appo_id === a.id).sort((x, y) => x.created_at - y.created_at).map(p => ({id: p.id, amount: Number(p.amount) || 0, note: p.note || '', at: p.at || ''}))}))
   };
 }
 const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, n || 80);
+const normRole = r => ['buyer', 'office', 'part'].includes(r) ? r : 'part';
+const normStore = (role, st) => role === 'part' ? (STORES.includes(st) ? st : STORES[0]) : role === 'office' ? (clean(st, 30) || '本社') : '';
 async function exec(action, a) {
   const now = Date.now(), attId = (sid, d) => sid + '_' + d;
   switch (action) {
     case 'register': {
       const name = clean(a.name, 40); if (!name) throw new Error('名前を入力してください');
-      const role = a.role === 'buyer' ? 'buyer' : 'part', id = uid();
-      await db.insert('staff', {id, name, role, store: role === 'part' ? (STORES.includes(a.store) ? a.store : STORES[0]) : '', active: true, created_at: now});
+      const role = normRole(a.role), id = uid();
+      const row = {id, name, role, store: normStore(role, a.store), active: true, created_at: now};
+      if (!S.migrate) row.pin_hash = '';
+      await db.insert('staff', row);
       return {staffId: id};
     }
     case 'updateStaff': {
       const p = {};
-      if (a.role) { p.role = a.role === 'buyer' ? 'buyer' : 'part'; p.store = p.role === 'part' ? (STORES.includes(a.store) ? a.store : STORES[0]) : ''; }
-      else if (a.store) p.store = STORES.includes(a.store) ? a.store : STORES[0];
+      if (a.role) { p.role = normRole(a.role); p.store = normStore(p.role, a.store); }
+      else if (a.store !== undefined) { const cur = S.staff.find(x => x.id === a.id); p.store = normStore(cur ? cur.role : 'part', a.store); }
       if (a.active !== undefined) p.active = !!a.active;
       return db.update('staff', a.id, p);
     }
-    case 'clockIn': return db.insertIgnore('attendance', {id: attId(a.staffId, a.date), staff_id: a.staffId, date: a.date, month: month(a.date), clock_in: a.time, clock_out: '', break_min: 0, now_label: '', now_since: '', updated_at: now});
+    case 'clockIn': {
+      const row = {id: attId(a.staffId, a.date), staff_id: a.staffId, date: a.date, month: month(a.date), clock_in: a.time, clock_out: '', break_min: 0, now_label: '', now_since: '', updated_at: now};
+      const st = S.staff.find(x => x.id === a.staffId);
+      if (!S.migrate) row.place = st && st.role === 'office' ? st.store : '';
+      return db.insertIgnore('attendance', row);
+    }
+    case 'setPlace': return db.update('attendance', attId(a.staffId, a.date), {place: clean(a.place, 30), updated_at: now});
+    case 'setPin': { if (!/^\d{4}$/.test(a.pin)) throw new Error('4桁の数字にしてください'); return db.update('staff', a.id, {pin_hash: await sha256(a.id + ':' + a.pin)}); }
+    case 'resetPin': return db.update('staff', a.id, {pin_hash: ''});
+    case 'addTask': {
+      const title = clean(a.title, 100); if (!title) throw new Error('タスクの内容を入力してください');
+      return db.insert('tasks', {id: uid(), staff_id: a.staffId, title, note: clean(a.note, 300), due_date: /^\d{4}-\d{2}-\d{2}$/.test(a.dueDate || '') ? a.dueDate : null, due_time: /^\d{2}:\d{2}$/.test(a.dueTime || '') ? a.dueTime : '', done: false, done_at: null, created_at: now});
+    }
+    case 'toggleTask': return db.update('tasks', a.id, {done: !!a.done, done_at: a.done ? now : null});
+    case 'taskDue': return db.update('tasks', a.id, {due_date: /^\d{4}-\d{2}-\d{2}$/.test(a.dueDate || '') ? a.dueDate : null});
+    case 'delTask': return db.remove('tasks', a.id);
     case 'clockOut': return db.update('attendance', attId(a.staffId, a.date), {clock_out: a.time, now_label: '', now_since: '', updated_at: now});
     case 'setAtt': {
       const col = {in: 'clock_in', out: 'clock_out', breakMin: 'break_min'}[a.field]; if (!col) throw new Error('変更できない項目です');
@@ -357,7 +409,7 @@ async function exec(action, a) {
 function apply(data) {
   S.staff = data.staff || [];
   S.att = (data.att || []).map(a => Object.assign(a, {now: a.nowLabel ? {label: a.nowLabel, since: a.nowSince} : null}));
-  S.logs = data.logs || []; S.appos = data.appos || [];
+  S.logs = data.logs || []; S.appos = data.appos || []; S.tasks = data.tasks || [];
   S.loadedMonth = data.month; S.status = 'ready';
 }
 const errText = e => (e && e.message && /[ぁ-んァ-ン一-龥]/.test(e.message)) ? e.message : '保存できませんでした。通信を確認してもう一度お試しください';
@@ -411,7 +463,39 @@ function buyerMonth(id) {
   return {target: appos.reduce((s, a) => s + (Number(a.target) || 0), 0), profit: appos.reduce((s, a) => s + appoProfit(a), 0)};
 }
 function monthAtt(id) { const rows = S.att.filter(a => a.staffId === id && a.in); return {days: rows.length, hours: rows.reduce((s, a) => s + workHours(a), 0)}; }
-const roleLbl = s => s.role === 'buyer' ? '社員（バイヤー）' : `アルバイト・${s.store || '店舗未設定'}`;
+const roleLbl = s => s.role === 'buyer' ? '社員（バイヤー）' : s.role === 'office' ? `社員（管理）・${s.store || '拠点未設定'}` : `アルバイト・${s.store || '店舗未設定'}`;
+const addDays = (ds, n) => { const d = new Date(ds + 'T00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+const dueLabel = t => { if (!t.dueDate) return '期限なし'; const [, m, d] = t.dueDate.split('-'); return `${Number(m)}/${Number(d)}（${dowJ(t.dueDate)}）${t.dueTime ? ' ' + t.dueTime : ''}`; };
+function taskState(t, base = S.date) {
+  if (t.done) return 'done';
+  if (!t.dueDate) return 'nodate';
+  if (t.dueDate < base) return 'overdue';
+  if (t.dueDate === base) return 'today';
+  if (t.dueDate === addDays(base, 1)) return 'tomorrow';
+  return 'later';
+}
+function officeTasks(id) {
+  const list = S.tasks.filter(t => t.staffId === id);
+  const by = {overdue: [], today: [], tomorrow: [], later: [], nodate: [], done: []};
+  list.forEach(t => by[taskState(t)].push(t));
+  const sortDue = (a, b) => (a.dueDate + (a.dueTime || '99')).localeCompare(b.dueDate + (b.dueTime || '99')) || a.createdAt - b.createdAt;
+  Object.keys(by).forEach(k => by[k].sort(k === 'done' ? (a, b) => b.doneAt - a.doneAt : sortDue));
+  const dueToday = list.filter(t => t.dueDate === S.date);
+  const week = list.filter(t => !t.done && t.dueDate && t.dueDate > S.date && t.dueDate <= addDays(S.date, 7)).length;
+  const doneMonth = list.filter(t => t.done && t.doneAt && ymd(new Date(t.doneAt)).slice(0, 7) === month(S.date)).length;
+  return {list, by, dueToday, todayDone: dueToday.filter(t => t.done).length, open: list.filter(t => !t.done).length, week, doneMonth};
+}
+function gcalUrl(t) {
+  if (!t.dueDate) return '';
+  const d = t.dueDate.replace(/-/g, '');
+  let dates;
+  if (t.dueTime) {
+    const st = new Date(`${t.dueDate}T${t.dueTime}:00`), en = new Date(st.getTime() + 30 * 60000);
+    const f = x => `${ymd(x).replace(/-/g, '')}T${pad(x.getHours())}${pad(x.getMinutes())}00`;
+    dates = `${f(st)}/${f(en)}`;
+  } else dates = `${d}/${addDays(t.dueDate, 1).replace(/-/g, '')}`;
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(t.title) + '&dates=' + dates + '&ctz=Asia/Tokyo&details=' + encodeURIComponent((t.note ? t.note + '\n' : '') + '買取・出品ワークボードのタスク');
+}
 
 /* ---------- atoms ---------- */
 function ring(v, t, label, sm) {
@@ -435,7 +519,16 @@ const confirmBtn = (key, act, label, sure, extra = '') => `<button class="link r
 /* ---------- attendance + now ---------- */
 function nowOptions(p) {
   if (p.role === 'buyer') return [...buyerDay(p.id).appos.map(a => '査定中：' + (a.title || TYPE[a.type].name)), '移動中', '事務作業', '休憩'];
+  if (p.role === 'office') { const T = officeTasks(p.id); return [...[...T.by.overdue, ...T.by.today].slice(0, 5).map(t => '対応中：' + t.title), '事務作業', '会議', '移動中', '休憩']; }
   return [...TASKS.map(t => t + '作業中'), '休憩'];
+}
+function placePicker(p, a) {
+  const cur = a.place || p.store || '';
+  const other = cur && !OFFICE_PLACES.includes(cur);
+  return `<div class="field"><label>今日の勤務場所</label>
+    <div class="nowchips">${OFFICE_PLACES.map(x => `<button class="chip" data-act="setPlace" data-id="${p.id}" data-v="${x}" aria-pressed="${cur === x}">${x}</button>`).join('')}
+    <button class="chip" data-act="placeOther" data-id="${p.id}" aria-pressed="${other || S.draft['po_' + p.id] !== undefined}">その他</button></div>
+    ${other || S.draft['po_' + p.id] !== undefined ? `<input class="input" id="pl-${p.id}" placeholder="場所を入力（例：〇〇マンション）" value="${esc(other ? cur : '')}" data-chg="placeText" data-id="${p.id}">` : ''}</div>`;
 }
 function attendanceCard(p) {
   const a = attOf(p.id), st = attStatus(a), isToday = S.date === todayStr();
@@ -454,6 +547,7 @@ function attendanceCard(p) {
     </div>` : `<div class="sub" style="flex:1">${isToday ? 'ボタンを押すと現在時刻で出勤を記録します。' : 'この日の出勤記録はありません。'}</div>`}
     ${action}
   </div>
+  ${p.role === 'office' && a && a.in ? placePicker(p, a) : ''}
   ${st === 'on' && isToday ? `<div class="field"><label>いま何をしていますか（管理マスターに表示されます）</label>
     <div class="nowchips">${nowOptions(p).map(o => `<button class="chip" data-act="setNow" data-id="${p.id}" data-v="${esc(o)}" aria-pressed="${cur === o}">${esc(o)}</button>`).join('')}</div></div>` : ''}
   ${a && a.in ? `<div>${confirmBtn('att-' + p.id, 'delAtt', '出勤記録を取り消す', 'もう一度押すと出勤記録を取り消します', `data-id="${p.id}"`)}</div>` : ''}
@@ -463,22 +557,94 @@ function attendanceCard(p) {
 /* ---------- staff pages ---------- */
 const switchBtn = () => S.card ? `<span class="pill on">自分のQRカードで開いています</span>` : `<button class="link" data-act="switchMe">名前を切り替える</button>`;
 function staffPage(p, peek) {
-  return p.role === 'buyer' ? viewBuyer(p, peek) : viewPart(p, peek);
+  return p.role === 'buyer' ? viewBuyer(p, peek) : p.role === 'office' ? viewOffice(p, peek) : viewPart(p, peek);
+}
+function roleSeg(key, val) {
+  return `<div class="seg">${['buyer', 'office', 'part'].map(r => `<button data-act="draftSet" data-k="${key}" data-v="${r}" aria-pressed="${val === r}">${ROLE_NAMES[r]}</button>`).join('')}</div>`;
+}
+function placeFields(roleKey, storeKey, otherKey) {
+  const r = S.draft[roleKey], cur = S.draft[storeKey];
+  if (r === 'part') return `<div class="field"><label>所属店舗</label><div class="seg">${STORES.map(x => `<button data-act="draftSet" data-k="${storeKey}" data-v="${x}" aria-pressed="${cur === x}">${x}</button>`).join('')}</div></div>`;
+  if (r === 'office') return `<div class="field"><label>主な拠点</label><div class="seg">${[...OFFICE_PLACES, 'その他'].map(x => `<button data-act="draftSet" data-k="${storeKey}" data-v="${x}" aria-pressed="${cur === x}">${x}</button>`).join('')}</div>
+    ${cur === 'その他' ? `<input class="input" id="${otherKey}" placeholder="拠点名を入力" value="${esc(S.draft[otherKey])}" data-draft="${otherKey}" style="margin-top:8px">` : ''}</div>`;
+  return '';
+}
+const draftStore = (storeKey, otherKey) => S.draft[storeKey] === 'その他' ? S.draft[otherKey].trim() : S.draft[storeKey];
+function viewOffice(p, peek) {
+  const T = officeTasks(p.id), a = attOf(p.id);
+  const place = (a && a.place) || p.store || '';
+  let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}・社員（管理）${place ? '・' + esc(place) : ''}</div><h1>${esc(p.name)} さん</h1></div>${peek ? '' : switchBtn()}</div>`;
+  const rem = [];
+  if (T.by.overdue.length) rem.push(`<span class="pill bad">期限切れ ${T.by.overdue.length}件</span>`);
+  if (T.by.today.length) rem.push(`<span class="pill warn">今日まで ${T.by.today.length}件</span>`);
+  if (T.by.tomorrow.length) rem.push(`<span class="pill u">明日まで ${T.by.tomorrow.length}件</span>`);
+  if (rem.length) html += `<div class="panel"><div class="remind"><b>リマインド</b>${rem.join('')}</div></div>`;
+  html += `<div class="panel"><div class="hero">${ring(T.todayDone, T.dueToday.length, '本日のタスク')}
+    <div class="stats">
+      <div class="stat"><div class="k">本日期限の完了</div><div class="v num">${T.todayDone}<span class="sub"> / ${T.dueToday.length}件</span></div></div>
+      <div class="stat"><div class="k">未完了</div><div class="v num">${T.open}件</div></div>
+      <div class="stat"><div class="k">今後7日の予定</div><div class="v num">${T.week}件</div></div>
+      <div class="stat"><div class="k">今月の完了</div><div class="v num">${T.doneMonth}件</div></div>
+    </div></div></div>`;
+  html += `<div class="grid2">${attendanceCard(p)}${taskAddForm(p)}</div>`;
+  html += `<div class="panel"><div class="titlerow"><h2>タスク一覧</h2><span class="sub">完了したら丸を押す</span></div>${taskList(T, true)}</div>`;
+  return html;
+}
+function taskAddForm(p) {
+  const d = S.draft;
+  return `<div class="panel"><h2>タスクを追加</h2>
+    <div class="field"><label for="t-title">何をするか</label><input class="input" id="t-title" placeholder="例：〇〇マンションの催事届を提出" value="${esc(d.taskTitle)}" data-draft="taskTitle"></div>
+    <div class="field"><label for="t-note">メモ（任意）</label><input class="input" id="t-note" placeholder="例：相模原警察署・書類一式" value="${esc(d.taskNote)}" data-draft="taskNote"></div>
+    <div class="form">
+      <div class="field"><label for="t-due">リマインド日（期限）</label><input class="input num" type="date" id="t-due" value="${esc(d.taskDue)}" data-draft="taskDue"></div>
+      <div class="field"><label for="t-time">時刻（任意）</label><input class="input num" type="time" id="t-time" value="${esc(d.taskTime)}" data-draft="taskTime"></div>
+    </div>
+    <div class="nowchips">${[['今日', 0], ['明日', 1], ['3日後', 3], ['1週間後', 7]].map(([l, n]) => `<button class="chip" data-act="dueQuick" data-v="${n}" aria-pressed="${d.taskDue === addDays(S.date, n)}">${l}</button>`).join('')}<button class="chip" data-act="dueQuick" data-v="none" aria-pressed="${!d.taskDue}">期限なし</button></div>
+    <button class="btn" data-act="addTask" data-id="${p.id}">タスクを追加</button></div>`;
+}
+function taskList(T, editable) {
+  const sec = [['overdue', '期限切れ'], ['today', '今日まで'], ['tomorrow', '明日まで'], ['later', 'これから'], ['nodate', '期限なし'], ['done', '完了（最近10件）']];
+  const rows = sec.filter(([k]) => T.by[k].length).map(([k, label]) => `<div class="tsec">${label}・${T.by[k].length}件</div>${(k === 'done' ? T.by[k].slice(0, 10) : T.by[k]).map(t => taskRow(t, k, editable)).join('')}`).join('');
+  return rows || `<div class="empty" style="padding:16px">まだタスクはありません。「タスクを追加」から登録してください。</div>`;
+}
+function taskRow(t, k, editable) {
+  const pill = {overdue: 'bad', today: 'warn', tomorrow: 'u', later: '', nodate: '', done: 'done'}[k];
+  const g = gcalUrl(t);
+  return `<div class="trow ${t.done ? 'done' : ''}">
+    <button class="chk" data-act="toggleTask" data-id="${t.id}" aria-pressed="${t.done}" aria-label="${t.done ? '未完了に戻す' : '完了にする'}">${t.done ? '✓' : ''}</button>
+    <div class="grow"><div class="tt">${esc(t.title)}</div>${t.note ? `<div class="tn">${esc(t.note)}</div>` : ''}
+      <div class="tm"><span class="pill ${pill}">${esc(dueLabel(t))}</span>
+      ${editable && !t.done ? `<input class="input num tdue" type="date" id="td-${t.id}" value="${esc(t.dueDate)}" data-chg="taskDue" data-id="${t.id}" aria-label="期限を変更">` : ''}
+      ${g && !t.done ? `<a class="link" href="${g}" target="_blank" rel="noopener">Googleカレンダーに登録</a>` : ''}
+      ${editable ? confirmBtn('tk-' + t.id, 'delTask', '削除', '削除する', `data-id="${t.id}"`) : ''}</div></div></div>`;
+}
+function pinModal() {
+  const P = S.pin; if (!P) return '';
+  const st = S.staff.find(x => x.id === P.id); if (!st) return '';
+  const msg = {enter: '4桁の暗証番号を入力してください', set1: 'はじめに、4桁の暗証番号を決めてください', set2: '確認のため、もう一度入力してください'}[P.mode];
+  return `<div class="pinwrap" role="dialog" aria-modal="true" aria-label="暗証番号">
+    <div class="pinbox"><div class="nm">${esc(st.name)} さん</div><div class="sub">${msg}</div>
+    <div class="dots">${[0, 1, 2, 3].map(i => `<i class="${i < P.buf.length ? 'on' : ''}"></i>`).join('')}</div>
+    <div class="pinerr">${esc(P.err || '')}</div>
+    <div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `<button class="key" data-act="pinKey" data-v="${n}">${n}</button>`).join('')}
+      <button class="key sm" data-act="pinCancel">やめる</button><button class="key" data-act="pinKey" data-v="0">0</button><button class="key sm" data-act="pinKey" data-v="back">← 消す</button></div>
+    <label class="remember"><input type="checkbox" id="pin-remember" ${S.remember ? 'checked' : ''}> このスマホを覚える（自分専用のスマホのときだけ）</label>
+    ${P.mode === 'enter' ? `<div class="sub" style="font-size:12px">番号を忘れたときは管理者に「番号リセット」を頼んでください。</div>` : ''}</div></div>`;
 }
 function pickView() {
-  const all = activeStaff();
-  const groups = [['社員（バイヤー）', all.filter(s => s.role === 'buyer')], ...STORES.map(st => ['アルバイト・' + st, all.filter(s => s.role === 'part' && s.store === st)])];
-  const r = S.draft.regRole;
-  let html = `<div><div class="eyebrow">${dateLabel()}</div><h1>あなたの名前を選んでください</h1><div class="sub" style="margin-top:6px">この端末では次回から自動で開きます。</div></div>`;
+  const all = activeStaff(), ord = {on: 0, done: 1, none: 2};
+  const sorted = list => [...list].sort((a, b) => ord[attStatus(attOf(a.id))] - ord[attStatus(attOf(b.id))]);
+  const groups = [['社員（バイヤー）', all.filter(s => s.role === 'buyer')], ['社員（管理）', all.filter(s => s.role === 'office')], ...STORES.map(st => ['アルバイト・' + st, all.filter(s => s.role === 'part' && s.store === st)])];
+  let html = `<div><div class="eyebrow">${dateLabel()}</div><h1>あなたの名前を選んでください</h1><div class="sub" style="margin-top:6px">名前を押して、4桁の暗証番号を入力します。勤務中の人が先頭に並びます。</div></div>`;
   if (all.length) html += groups.filter(g => g[1].length).map(([label, list]) => `<div class="panel"><h3>${label}</h3>
-    <div class="chips">${list.map(s => `<button class="chip" data-act="pickMe" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div></div>`).join('');
+    <div class="chips">${sorted(list).map(s => `<button class="chip" data-act="pickMe" data-id="${s.id}">${esc(s.name)}${attStatus(attOf(s.id)) === 'on' ? ' ・勤務中' : ''}</button>`).join('')}</div></div>`).join('');
   html += `<div class="panel"><h2>はじめての方は登録</h2>
    <div class="form">
     <div class="field"><label for="r-name">名前</label><input class="input" id="r-name" placeholder="例：山田 太郎" value="${esc(S.draft.regName)}" data-draft="regName"></div>
-    <div class="field"><label>区分</label><div class="seg"><button data-act="draftSet" data-k="regRole" data-v="buyer" aria-pressed="${r === 'buyer'}">社員（バイヤー）</button><button data-act="draftSet" data-k="regRole" data-v="part" aria-pressed="${r === 'part'}">アルバイト</button></div></div>
-    ${r === 'part' ? `<div class="field"><label>所属店舗</label><div class="seg">${STORES.map(x => `<button data-act="draftSet" data-k="regStore" data-v="${x}" aria-pressed="${S.draft.regStore === x}">${x}</button>`).join('')}</div></div>` : ''}
+    <div class="field"><label>区分</label>${roleSeg('regRole', S.draft.regRole)}</div>
+    ${placeFields('regRole', 'regStore', 'regOther')}
    </div>
-   <div><button class="btn lg" data-act="register">登録してはじめる</button></div></div>`;
+   <div><button class="btn lg" data-act="register">登録して暗証番号を決める</button></div></div>`;
   return html;
 }
 function viewPart(p, peek) {
@@ -557,13 +723,15 @@ function appoCard(a) {
 
 /* ---------- admin ---------- */
 function viewAdmin() {
-  const tabs = [['now', '本日の動き'], ['perf', '実績'], ['att', '出勤管理'], ['staff', 'スタッフ']];
+  const tabs = [['now', '本日の動き'], ['tasks', 'タスク'], ['perf', '実績'], ['att', '出勤管理'], ['staff', 'スタッフ']];
   let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}</div><h1>管理マスター</h1></div>
     <div class="seg">${tabs.map(([k, v]) => `<button data-act="adminTab" data-v="${k}" aria-pressed="${S.adminTab === k}">${v}</button>`).join('')}</div></div>`;
+  if (S.migrate) html += `<div class="notice" style="border:1px solid var(--warn-ring)"><b>データベースの更新が必要です。</b>Supabase の SQL Editor で、お送りした追加用SQL（migration_002.sql）を1回実行してください。実行するまで、暗証番号・タスク・勤務場所は保存されません。</div>`;
   if (S.adminTab === 'staff') return html + adminStaff();
   if (!activeStaff().length) return html + `<div class="panel"><div class="empty"><div class="big">まだスタッフが登録されていません</div><div>スタッフ用のリンクかQRコードを配ると、各自が最初に名前を登録します。</div><button class="btn" data-act="adminTab" data-v="staff">リンクとQRコードを見る</button></div></div>`;
   if (S.adminTab === 'att') return html + adminAtt();
   if (S.adminTab === 'perf') return html + adminPerf();
+  if (S.adminTab === 'tasks') return html + adminTasks();
   return html + adminNow();
 }
 function personCard(s) {
@@ -573,24 +741,26 @@ function personCard(s) {
   else {
     let last = null;
     if (s.role === 'buyer') { const ap = buyerDay(s.id).appos; const l = ap[ap.length - 1]; if (l) last = {t: 'アポ：' + (l.title || TYPE[l.type].name), sub: hmOf(l.createdAt) + ' に登録'}; }
+    else if (s.role === 'office') { const T = officeTasks(s.id); const n = [...T.by.overdue, ...T.by.today, ...T.by.tomorrow, ...T.by.later][0]; if (n) last = {t: '次：' + n.title, sub: dueLabel(n)}; }
     else { const lg = partDay(s.id).logs; const l = lg[lg.length - 1]; if (l) last = {t: `${l.task} ${fmtH(Number(l.hours) || 0)}${Number(l.count) ? '・' + l.count + (l.task === '出品' ? '品' : '件') : ''}`, sub: hmOf(l.createdAt) + ' に記録'}; }
     nowHtml = st === 'none' ? `<div class="now" style="color:var(--faint)">未出勤</div>`
       : last ? `<div class="now" style="font-size:16px">${esc(last.t)}<small>最新の記録・${esc(last.sub)}</small></div>`
       : `<div class="now" style="font-size:16px;color:var(--muted)">${st === 'done' ? '退勤済' : '状況未入力'}</div>`;
   }
   let prog;
-  if (s.role === 'buyer') { const d = buyerDay(s.id); prog = `<span>粗利 <b class="num" style="color:var(--fg)">${yen(d.profit)}</b> / ${yen(d.target)}</span><span class="num">${pctTxt(d.profit, d.target)}</span>${bar(d.profit, d.target)}<span>アポ ${d.appos.length}件</span>`; }
+  if (s.role === 'office') { const T = officeTasks(s.id); prog = `<span>本日のタスク <b class="num" style="color:var(--fg)">${T.todayDone}</b> / ${T.dueToday.length}件</span><span class="num">${pctTxt(T.todayDone, T.dueToday.length)}</span>${bar(T.todayDone, T.dueToday.length)}<span>${T.by.overdue.length ? `<span class="pill bad">期限切れ ${T.by.overdue.length}件</span>` : `未完了 ${T.open}件`}</span>`; }
+  else if (s.role === 'buyer') { const d = buyerDay(s.id); prog = `<span>粗利 <b class="num" style="color:var(--fg)">${yen(d.profit)}</b> / ${yen(d.target)}</span><span class="num">${pctTxt(d.profit, d.target)}</span>${bar(d.profit, d.target)}<span>アポ ${d.appos.length}件</span>`; }
   else { const d = partDay(s.id); prog = `<span>出品 <b class="num" style="color:var(--fg)">${d.listed}</b> / ${d.target}品</span><span class="num">${pctTxt(d.listed, d.target)}</span>${bar(d.listed, d.target)}<span class="num">作業記録 ${fmtH(d.logged)}</span>`; }
   return `<div class="pcard ${st}" data-act="openPeek" data-id="${s.id}" role="button" tabindex="0" title="${esc(s.name)} さんの画面を開く">
     <div class="top"><div class="nm">${esc(s.name)}</div>${statusPill(a)}</div>
-    <div class="meta num">${a && a.in ? `${esc(a.in)}〜${esc(a.out || '')}・実働 ${fmtH(workHours(a))}` : '出勤記録なし'}</div>
+    <div class="meta num">${a && a.in ? `${esc(a.in)}〜${esc(a.out || '')}・実働 ${fmtH(workHours(a))}${s.role === 'office' && (a.place || s.store) ? '・' + esc(a.place || s.store) : ''}` : '出勤記録なし'}</div>
     ${nowHtml}
     <div class="prog">${prog}</div></div>`;
 }
 function adminNow() {
   const all = activeStaff(), ord = {on: 0, done: 1, none: 2};
   const sorted = list => [...list].sort((a, b) => ord[attStatus(attOf(a.id))] - ord[attStatus(attOf(b.id))]);
-  const groups = [['社員（バイヤー）', all.filter(s => s.role === 'buyer')], ...STORES.map(st => ['アルバイト・' + st, all.filter(s => s.role === 'part' && s.store === st)])];
+  const groups = [['社員（バイヤー）', all.filter(s => s.role === 'buyer')], ['社員（管理）', all.filter(s => s.role === 'office')], ...STORES.map(st => ['アルバイト・' + st, all.filter(s => s.role === 'part' && s.store === st)])];
   const working = all.filter(s => attStatus(attOf(s.id)) === 'on').length;
   const buyers = all.filter(s => s.role === 'buyer'), parts = all.filter(s => s.role === 'part');
   const bT = buyers.reduce((x, s) => x + buyerDay(s.id).target, 0), bP = buyers.reduce((x, s) => x + buyerDay(s.id).profit, 0);
@@ -606,6 +776,18 @@ function adminNow() {
     html += `<div class="grouphead"><h2>${label}</h2><span class="sub num">勤務中 ${on} / ${list.length}人</span></div>
       <div class="board">${sorted(list).map(personCard).join('')}</div>`;
   });
+  return html;
+}
+function adminTasks() {
+  const people = activeStaff().filter(s => s.role === 'office' || S.tasks.some(t => t.staffId === s.id));
+  if (!people.length) return `<div class="panel"><div class="empty"><div class="big">タスクを使う人がまだいません</div><div>区分「社員（管理）」で登録した人のタスクがここに並びます。</div></div></div>`;
+  const all = people.map(s => ({s, T: officeTasks(s.id)}));
+  const od = all.reduce((x, r) => x + r.T.by.overdue.length, 0), td = all.reduce((x, r) => x + r.T.by.today.length, 0), op = all.reduce((x, r) => x + r.T.open, 0);
+  let html = `<div class="grid4">
+    <div class="kpi"><div><div class="k">期限切れ</div><div class="v num" style="color:${od ? 'var(--bad)' : 'inherit'}">${od}件</div></div></div>
+    <div class="kpi"><div><div class="k">今日まで</div><div class="v num">${td}件</div></div></div>
+    <div class="kpi"><div><div class="k">未完了の合計</div><div class="v num">${op}件</div></div></div></div>`;
+  html += all.map(({s, T}) => `<div class="panel"><div class="titlerow"><h2>${esc(s.name)}</h2><span class="sub">${roleLbl(s)}・未完了 ${T.open}件</span></div>${taskList(T, true)}</div>`).join('');
   return html;
 }
 function adminPerf() {
@@ -662,17 +844,20 @@ function adminStaff() {
   html += `<div class="panel"><h2>スタッフを追加</h2>
    <div class="form">
     <div class="field"><label for="a-name">名前</label><input class="input" id="a-name" placeholder="例：山田 太郎" value="${esc(S.draft.addName)}" data-draft="addName"></div>
-    <div class="field"><label>区分</label><div class="seg"><button data-act="draftSet" data-k="addRole" data-v="buyer" aria-pressed="${r === 'buyer'}">社員（バイヤー）</button><button data-act="draftSet" data-k="addRole" data-v="part" aria-pressed="${r === 'part'}">アルバイト</button></div></div>
-    ${r === 'part' ? `<div class="field"><label>所属店舗</label><div class="seg">${STORES.map(x => `<button data-act="draftSet" data-k="addStore" data-v="${x}" aria-pressed="${S.draft.addStore === x}">${x}</button>`).join('')}</div></div>` : ''}
+    <div class="field"><label>区分</label>${roleSeg('addRole', r)}</div>
+    ${placeFields('addRole', 'addStore', 'addOther')}
    </div><div><button class="btn" data-act="addStaff">追加する</button></div></div>`;
   html += `<div class="panel"><div class="titlerow"><h2>登録スタッフ</h2><span class="sub num">${act.length}人</span></div>
    ${act.length ? `<div class="list">${act.map(s => `<div class="row" style="flex-wrap:wrap">
      <div class="grow"><b>${esc(s.name)}</b></div>
-     <select class="input" style="width:auto" id="sr-${s.id}" data-chg="staffRole" data-id="${s.id}" aria-label="区分"><option value="buyer" ${s.role === 'buyer' ? 'selected' : ''}>社員（バイヤー）</option><option value="part" ${s.role === 'part' ? 'selected' : ''}>アルバイト</option></select>
+     ${s.pinHash ? '' : '<span class="pill">番号未設定</span>'}
+     <select class="input" style="width:auto" id="sr-${s.id}" data-chg="staffRole" data-id="${s.id}" aria-label="区分">${['buyer', 'office', 'part'].map(x => `<option value="${x}" ${s.role === x ? 'selected' : ''}>${ROLE_NAMES[x]}</option>`).join('')}</select>
      ${s.role === 'part' ? `<select class="input" style="width:auto" id="ss-${s.id}" data-chg="staffStore" data-id="${s.id}" aria-label="店舗">${STORES.map(x => `<option ${s.store === x ? 'selected' : ''}>${x}</option>`).join('')}</select>` : ''}
+     ${s.role === 'office' ? `<input class="input" style="width:150px" id="so-${s.id}" list="office-places" value="${esc(s.store)}" data-chg="staffStore" data-id="${s.id}" aria-label="拠点" placeholder="拠点">` : ''}
+     ${s.pinHash ? confirmBtn('pr-' + s.id, 'resetPin', '番号リセット', 'もう一度押すとリセット', `data-id="${s.id}"`) : ''}
      <button class="link" data-act="cards" data-id="${s.id}">QRカード</button>
      ${confirmBtn('st-' + s.id, 'offStaff', '利用停止', 'もう一度押すと利用停止します', `data-id="${s.id}"`)}</div>`).join('')}</div>`
-     : `<div class="empty" style="padding:16px">まだ誰も登録していません。</div>`}</div>`;
+     : `<div class="empty" style="padding:16px">まだ誰も登録していません。</div>`}<datalist id="office-places">${OFFICE_PLACES.map(x => `<option value="${x}">`).join('')}</datalist></div>`;
   if (off.length) html += `<div class="panel"><h2>利用停止中</h2><div class="list">${off.map(s => `<div class="row"><div class="grow">${esc(s.name)} <span class="sub">${roleLbl(s)}</span></div><button class="link" data-act="onStaff" data-id="${s.id}">再開する</button>${confirmBtn('rm-' + s.id, 'delStaff', '完全に削除', 'もう一度押すと記録ごと削除します', `data-id="${s.id}"`)}</div>`).join('')}</div>
     <div class="notice">利用停止した人は名前の一覧に出なくなり、過去の記録は残ります。「完全に削除」はその人の出勤・作業・アポ・粗利の記録もすべて消し、元に戻せません。テストで登録した人の片付けに使ってください。</div></div>`;
   return html;
@@ -713,10 +898,12 @@ function render() {
   const vals = {}; app.querySelectorAll('input[id]:not([data-chg]):not([data-draft])').forEach(el => vals[el.id] = el.value);
   const banner = S.demo ? `<div class="notice">デモモードです。記録はこの端末のブラウザにだけ保存されます。</div>` : '';
   if (S.isAdmin) app.innerHTML = banner + (S.view === 'peek' ? viewPeek() : S.view === 'cards' ? viewCards() : viewAdmin());
+  else if (S.pin) app.innerHTML = banner + pickView() + pinModal();
   else if (S.card && !me) app.innerHTML = `<div class="panel"><div class="empty"><div class="big">このQRカードは使えません</div><div>登録が削除されたか、利用停止になっています。管理者に確認してください。</div></div></div>`;
   else app.innerHTML = banner + (me ? staffPage(me, false) : pickView());
   for (const id in vals) { const el = document.getElementById(id); if (el && !el.readOnly) el.value = vals[id]; }
   if (focus) { const el = document.getElementById(focus); if (el) el.focus(); }
+  if (me && me.role === 'office' && !S.isAdmin && S.reminded !== me.id + S.date) { const T = officeTasks(me.id); S.reminded = me.id + S.date; if (T.by.overdue.length || T.by.today.length) setTimeout(() => toast(`リマインド：期限切れ ${T.by.overdue.length}件・今日まで ${T.by.today.length}件`), 300); }
   if (window.QRCode) app.querySelectorAll('[data-qr]').forEach(el => { try { new QRCode(el, {text: el.dataset.qr, width: 168, height: 168, correctLevel: QRCode.CorrectLevel.M}); } catch (e) {} });
   const qr = document.getElementById('qr');
   if (qr && window.QRCode && S.url) { try { new QRCode(qr, {text: S.url, width: 176, height: 176, correctLevel: QRCode.CorrectLevel.M}); } catch (e) {} }
@@ -739,8 +926,25 @@ document.addEventListener('click', e => {
     case 'draftSet': S.draft[b.dataset.k] = b.dataset.v; break;
     case 'adminTab': S.adminTab = b.dataset.v; store.set('adminTab', S.adminTab); break;
     case 'ask': S.confirm = b.dataset.k; break;
-    case 'pickMe': S.staffId = id; store.set('me', id); reload(); window.scrollTo(0, 0); break;
-    case 'switchMe': S.staffId = ''; store.set('me', ''); reload(); break;
+    case 'pickMe': {
+      const st = S.staff.find(x => x.id === id); if (!st) return;
+      if (S.migrate) { login(id); return; }
+      S.pin = {id, mode: st.pinHash ? 'enter' : 'set1', buf: '', first: '', err: ''}; S.remember = false; break;
+    }
+    case 'pinCancel': S.pin = null; break;
+    case 'pinKey': pinKey(b.dataset.v); return;
+    case 'resetPin': S.confirm = null; call('resetPin', {id}, '番号をリセットしました。本人が次に開いたときに新しい番号を決めます'); break;
+    case 'setPlace': call('setPlace', {staffId: id, date: d, place: b.dataset.v}, `勤務場所：${b.dataset.v}`); delete S.draft['po_' + id]; return;
+    case 'placeOther': S.draft['po_' + id] = ''; render(); document.getElementById('pl-' + id)?.focus(); return;
+    case 'dueQuick': S.draft.taskDue = b.dataset.v === 'none' ? '' : addDays(S.date, Number(b.dataset.v)); break;
+    case 'addTask': {
+      const title = S.draft.taskTitle.trim(); if (!title) { toast('何をするかを入力してください'); document.getElementById('t-title')?.focus(); return; }
+      call('addTask', {staffId: id, title, note: S.draft.taskNote, dueDate: S.draft.taskDue, dueTime: S.draft.taskTime}, 'タスクを追加しました');
+      S.draft.taskTitle = ''; S.draft.taskNote = ''; S.draft.taskTime = ''; break;
+    }
+    case 'toggleTask': { const t = S.tasks.find(x => x.id === id); if (!t) return; t.done = !t.done; t.doneAt = t.done ? Date.now() : 0; render(); call('toggleTask', {id, done: t.done}, t.done ? '完了にしました' : '未完了に戻しました'); return; }
+    case 'delTask': S.confirm = null; call('delTask', {id}, 'タスクを削除しました'); break;
+    case 'switchMe': logout(); return;
     case 'peekPick': S.peek = id; store.set('peek', id); break;
     case 'cards': S.cardsFor = id || ''; S.view = 'cards'; window.scrollTo(0, 0); break;
     case 'cardsBack': S.view = 'admin'; S.adminTab = 'staff'; break;
@@ -754,18 +958,23 @@ document.addEventListener('click', e => {
     }
     case 'register': {
       const name = S.draft.regName.trim(); if (!name) { toast('名前を入力してください'); document.getElementById('r-name')?.focus(); return; }
-      call('register', {name, role: S.draft.regRole, store: S.draft.regStore}).then(data => {
-        if (data && data.result && data.result.staffId) { S.staffId = data.result.staffId; store.set('me', S.staffId); S.draft.regName = ''; toast(`${name} さん、登録しました`); reload(); }
+      const st = draftStore('regStore', 'regOther'); if (S.draft.regRole === 'office' && !st) { toast('拠点名を入力してください'); return; }
+      call('register', {name, role: S.draft.regRole, store: st}).then(data => {
+        if (data && data.result && data.result.staffId) {
+          S.draft.regName = ''; toast(`${name} さん、登録しました`);
+          if (S.migrate) login(data.result.staffId); else { S.pin = {id: data.result.staffId, mode: 'set1', buf: '', first: '', err: ''}; S.remember = false; render(); }
+        }
       });
       return;
     }
     case 'addStaff': {
       const name = S.draft.addName.trim(); if (!name) { toast('名前を入力してください'); document.getElementById('a-name')?.focus(); return; }
-      call('register', {name, role: S.draft.addRole, store: S.draft.addStore}, `${name} さんを追加しました`);
+      const st = draftStore('addStore', 'addOther'); if (S.draft.addRole === 'office' && !st) { toast('拠点名を入力してください'); return; }
+      call('register', {name, role: S.draft.addRole, store: st}, `${name} さんを追加しました`);
       S.draft.addName = ''; break;
     }
     case 'clockIn': { const t = isToday ? nowHM() : '09:00'; call('clockIn', {staffId: id, date: d, time: t}, `出勤 ${t}`); return; }
-    case 'clockOut': { const t = isToday ? nowHM() : '18:00'; call('clockOut', {staffId: id, date: d, time: t}, `退勤 ${t}・お疲れさまでした`); return; }
+    case 'clockOut': { const t = isToday ? nowHM() : '18:00'; call('clockOut', {staffId: id, date: d, time: t}, `退勤 ${t}・お疲れさまでした`).then(() => { if (S.session) setTimeout(logout, 2500); }); return; }
     case 'setNow': {
       const a = attOf(id); if (!a) return;
       const v = b.dataset.v, clear = a.now && a.now.label === v;
@@ -798,6 +1007,11 @@ document.addEventListener('click', e => {
   render();
 });
 document.addEventListener('keydown', e => {
+  if (S.pin && !e.target.closest('input[type=text]')) {
+    if (/^[0-9]$/.test(e.key)) { e.preventDefault(); pinKey(e.key); return; }
+    if (e.key === 'Backspace') { e.preventDefault(); pinKey('back'); return; }
+    if (e.key === 'Escape') { S.pin = null; render(); return; }
+  }
   if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pcard')) { e.preventDefault(); e.target.click(); return; }
   if (e.key !== 'Enter' || !e.target.id) return;
   const m = e.target.id.match(/^p[an]-(.+)$/); if (m) { e.preventDefault(); document.querySelector(`[data-act="addProfit"][data-id="${m[1]}"]`)?.click(); }
@@ -817,11 +1031,44 @@ document.addEventListener('change', e => {
     call('setAtt', {staffId: id, date: S.date, field: f, value: f === 'breakMin' ? Number(el.value) : el.value}, '勤怠を更新しました');
   } else if (c === 'staffRole') {
     const s = S.staff.find(x => x.id === id);
-    call('updateStaff', {id, role: el.value, store: (s && s.store) || '相模原'}, '区分を変更しました');
+    call('updateStaff', {id, role: el.value, store: el.value === 'part' ? (STORES.includes(s && s.store) ? s.store : '相模原') : el.value === 'office' ? ((s && s.store) || '本社') : ''}, '区分を変更しました');
+  } else if (c === 'placeText') {
+    if (el.value.trim()) call('setPlace', {staffId: id, date: S.date, place: el.value.trim()}, `勤務場所：${el.value.trim()}`);
+  } else if (c === 'taskDue') {
+    call('taskDue', {id, dueDate: el.value}, '期限を変更しました');
   } else if (c === 'staffStore') {
     call('updateStaff', {id, store: el.value}, '店舗を変更しました');
   }
 });
+function login(id) {
+  S.staffId = id; S.pin = null; S.session = !S.remember;
+  store.set('me', S.remember ? id : '');
+  S.lastAct = Date.now(); window.scrollTo(0, 0); reload();
+}
+function logout() {
+  S.staffId = ''; S.session = false; S.pin = null; store.set('me', '');
+  window.scrollTo(0, 0); reload();
+}
+async function pinKey(v) {
+  const P = S.pin; if (!P) return;
+  P.err = '';
+  if (v === 'back') { P.buf = P.buf.slice(0, -1); render(); return; }
+  if (P.buf.length >= 4) return;
+  P.buf += v; render();
+  if (P.buf.length < 4) return;
+  const st = S.staff.find(x => x.id === P.id); if (!st) { S.pin = null; render(); return; }
+  const rem = document.getElementById('pin-remember'); S.remember = !!(rem && rem.checked);
+  if (P.mode === 'enter') {
+    if (await sha256(P.id + ':' + P.buf) === st.pinHash) login(P.id);
+    else { P.buf = ''; P.err = '番号が違います。もう一度入力してください'; render(); }
+  } else if (P.mode === 'set1') { P.first = P.buf; P.buf = ''; P.mode = 'set2'; render(); }
+  else {
+    if (P.buf !== P.first) { P.buf = ''; P.first = ''; P.mode = 'set1'; P.err = '番号が一致しませんでした。最初から決めてください'; render(); return; }
+    const pin = P.buf; const id = P.id;
+    const ok = await call('setPin', {id, pin}, '暗証番号を設定しました');
+    if (ok) login(id); else { P.buf = ''; render(); }
+  }
+}
 function setDate(dt) {
   const changed = month(dt) !== S.loadedMonth;
   S.date = dt; S.confirm = null; render();
@@ -838,6 +1085,8 @@ let rt;
   render();
   await reload();
   db.subscribe(() => { clearTimeout(rt); rt = setTimeout(() => { if (!S.busy) reload(); }, 400); });
+  ['click', 'keydown', 'input', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { S.lastAct = Date.now(); }, {passive: true}));
+  setInterval(() => { if (S.session && S.staffId && Date.now() - S.lastAct > 5 * 60000) { logout(); toast('しばらく操作がなかったので、名前の選択に戻りました'); } }, 20000);
   setInterval(() => { if (S.status === 'ready' && !S.busy && !document.hidden && !(document.activeElement && document.activeElement.matches('input,select'))) reload(); }, 60000);
 })();
 })();
