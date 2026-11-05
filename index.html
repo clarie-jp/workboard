@@ -340,6 +340,7 @@ async function exec(action, a) {
       return db.insert('profits', {id: uid(), appo_id: ap.id, staff_id: ap.staffId, date: ap.date, month: month(ap.date), amount: Math.round(Number(a.amount)), note: clean(a.note, 80), at: a.at || '', created_at: now});
     }
     case 'delProfit': return db.remove('profits', a.id);
+    case 'deleteStaff': return db.remove('staff', a.id);
   }
   throw new Error('不明な操作です');
 }
@@ -658,8 +659,8 @@ function adminStaff() {
      ${s.role === 'part' ? `<select class="input" style="width:auto" id="ss-${s.id}" data-chg="staffStore" data-id="${s.id}" aria-label="店舗">${STORES.map(x => `<option ${s.store === x ? 'selected' : ''}>${x}</option>`).join('')}</select>` : ''}
      ${confirmBtn('st-' + s.id, 'offStaff', '利用停止', 'もう一度押すと利用停止します', `data-id="${s.id}"`)}</div>`).join('')}</div>`
      : `<div class="empty" style="padding:16px">まだ誰も登録していません。</div>`}</div>`;
-  if (off.length) html += `<div class="panel"><h2>利用停止中</h2><div class="list">${off.map(s => `<div class="row"><div class="grow">${esc(s.name)} <span class="sub">${roleLbl(s)}</span></div><button class="link" data-act="onStaff" data-id="${s.id}">再開する</button></div>`).join('')}</div>
-    <div class="notice">利用停止した人は名前の一覧に出なくなります。過去の記録は残ります。</div></div>`;
+  if (off.length) html += `<div class="panel"><h2>利用停止中</h2><div class="list">${off.map(s => `<div class="row"><div class="grow">${esc(s.name)} <span class="sub">${roleLbl(s)}</span></div><button class="link" data-act="onStaff" data-id="${s.id}">再開する</button>${confirmBtn('rm-' + s.id, 'delStaff', '完全に削除', 'もう一度押すと記録ごと削除します', `data-id="${s.id}"`)}</div>`).join('')}</div>
+    <div class="notice">利用停止した人は名前の一覧に出なくなり、過去の記録は残ります。「完全に削除」はその人の出勤・作業・アポ・粗利の記録もすべて消し、元に戻せません。テストで登録した人の片付けに使ってください。</div></div>`;
   return html;
 }
 function viewPeek() {
@@ -760,6 +761,7 @@ document.addEventListener('click', e => {
     case 'delAppo': S.confirm = null; call('delAppo', {id}, 'アポを削除しました'); break;
     case 'offStaff': S.confirm = null; call('updateStaff', {id, active: false}, '利用停止にしました'); break;
     case 'onStaff': call('updateStaff', {id, active: true}, '利用を再開しました'); break;
+    case 'delStaff': S.confirm = null; call('deleteStaff', {id}, '削除しました'); if (S.peek === id) { S.peek = ''; store.set('peek', ''); } break;
   }
   render();
 });
