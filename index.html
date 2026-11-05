@@ -184,6 +184,15 @@ img{max-width:100%}
 .grid4.tight{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
 .qr{width:192px;padding:8px;background:#fff;border-radius:12px}
 .qr img,.qr canvas{display:block}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.qcard{background:#fff;color:#1d1d1f;border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:10px;justify-items:center;text-align:center;break-inside:avoid}
+.qcard .nm{font-family:var(--display);font-size:22px;font-weight:700}
+.qcard .rl{font-size:12px;color:#6e6e73}
+.qcard .qbox{width:168px;height:168px}
+.qcard .qbox img,.qcard .qbox canvas{width:168px!important;height:168px!important}
+.qcard .hint{font-size:11px;color:#6e6e73;line-height:1.5}
+.cardbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+@media print{header,.no-print,.toast,.notice{display:none!important}body{background:#fff!important}main{padding:0!important}.cards{grid-template-columns:repeat(2,1fr);gap:12px}.qcard{border:1px dashed #999}}
 
 </style>
 </head>
@@ -240,9 +249,10 @@ const store = {
   set(k, v) { try { localStorage.setItem('wbg_' + k, JSON.stringify(v)); } catch (e) {} }
 };
 
+const CARD_ID = (new URLSearchParams(location.search).get('s') || '').slice(0, 64);
 const S = {
   isAdmin: false, key: '', url: location.origin + location.pathname, demo: false,
-  status: 'loading', staffId: store.get('me', ''), peek: store.get('peek', ''),
+  status: 'loading', card: CARD_ID, staffId: CARD_ID || store.get('me', ''), peek: store.get('peek', ''), cardsFor: '',
   staff: [], att: [], logs: [], appos: [],
   date: todayStr(), view: 'me', adminTab: store.get('adminTab', 'now'),
   draft: {task: '出品', hours: '1', count: '', appoType: 'unisound', appoTitle: '', regName: '', regRole: 'part', regStore: '相模原', addName: '', addRole: 'part', addStore: '相模原'},
@@ -451,6 +461,7 @@ function attendanceCard(p) {
 }
 
 /* ---------- staff pages ---------- */
+const switchBtn = () => S.card ? `<span class="pill on">自分のQRカードで開いています</span>` : `<button class="link" data-act="switchMe">名前を切り替える</button>`;
 function staffPage(p, peek) {
   return p.role === 'buyer' ? viewBuyer(p, peek) : viewPart(p, peek);
 }
@@ -473,7 +484,7 @@ function pickView() {
 function viewPart(p, peek) {
   const d = partDay(p.id), m = partMonth(p.id), a = attOf(p.id), wh = workHours(a);
   const unassigned = Math.max(0, wh - d.logged);
-  let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}・アルバイト・${esc(p.store || '')}</div><h1>${esc(p.name)} さん</h1></div>${peek ? '' : `<button class="link" data-act="switchMe">名前を切り替える</button>`}</div>`;
+  let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}・アルバイト・${esc(p.store || '')}</div><h1>${esc(p.name)} さん</h1></div>${peek ? '' : switchBtn()}</div>`;
   html += `<div class="panel"><div class="hero">${ring(d.listed, d.target, '出品達成率')}
     <div class="stats">
       <div class="stat"><div class="k">出品数</div><div class="v num">${d.listed}<span class="sub"> / ${d.target}品</span></div></div>
@@ -507,7 +518,7 @@ function taskForm(p) {
 }
 function viewBuyer(p, peek) {
   const d = buyerDay(p.id), m = buyerMonth(p.id);
-  let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}・社員（バイヤー）</div><h1>${esc(p.name)} さん</h1></div>${peek ? '' : `<button class="link" data-act="switchMe">名前を切り替える</button>`}</div>`;
+  let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}・社員（バイヤー）</div><h1>${esc(p.name)} さん</h1></div>${peek ? '' : switchBtn()}</div>`;
   html += `<div class="panel"><div class="hero">${ring(d.profit, d.target, '粗利達成率')}
     <div class="stats">
       <div class="stat"><div class="k">本日の粗利</div><div class="v num">${yen(d.profit)}</div></div>
@@ -646,6 +657,8 @@ function adminStaff() {
    <div class="panel"><h2>管理者用のリンク</h2>
     <div class="sub">全員の記録が見られる管理マスターを開くリンクです。スタッフには渡さないでください。</div>
     <div class="copyrow"><input class="input" id="u-admin" readonly value="${esc(S.url + '?admin=' + S.key)}"><button class="btn ghost" data-act="copy" data-target="u-admin">コピー</button></div></div></div>`;
+  html += `<div class="panel"><div class="titlerow"><h2>個人QRカード（共用スマホ向け）</h2><button class="btn" data-act="cards" data-id="">全員分を表示・印刷</button></div>
+    <div class="sub">一人ずつ専用のQRコードです。どのスマホで読み取っても、その人の画面が直接開きます。名前を選ぶ操作がないので選び間違いが起きず、スマホに名前も残りません。共用スマホを使うアルバイトにおすすめです。</div></div>`;
   html += `<div class="panel"><h2>スタッフを追加</h2>
    <div class="form">
     <div class="field"><label for="a-name">名前</label><input class="input" id="a-name" placeholder="例：山田 太郎" value="${esc(S.draft.addName)}" data-draft="addName"></div>
@@ -657,11 +670,25 @@ function adminStaff() {
      <div class="grow"><b>${esc(s.name)}</b></div>
      <select class="input" style="width:auto" id="sr-${s.id}" data-chg="staffRole" data-id="${s.id}" aria-label="区分"><option value="buyer" ${s.role === 'buyer' ? 'selected' : ''}>社員（バイヤー）</option><option value="part" ${s.role === 'part' ? 'selected' : ''}>アルバイト</option></select>
      ${s.role === 'part' ? `<select class="input" style="width:auto" id="ss-${s.id}" data-chg="staffStore" data-id="${s.id}" aria-label="店舗">${STORES.map(x => `<option ${s.store === x ? 'selected' : ''}>${x}</option>`).join('')}</select>` : ''}
+     <button class="link" data-act="cards" data-id="${s.id}">QRカード</button>
      ${confirmBtn('st-' + s.id, 'offStaff', '利用停止', 'もう一度押すと利用停止します', `data-id="${s.id}"`)}</div>`).join('')}</div>`
      : `<div class="empty" style="padding:16px">まだ誰も登録していません。</div>`}</div>`;
   if (off.length) html += `<div class="panel"><h2>利用停止中</h2><div class="list">${off.map(s => `<div class="row"><div class="grow">${esc(s.name)} <span class="sub">${roleLbl(s)}</span></div><button class="link" data-act="onStaff" data-id="${s.id}">再開する</button>${confirmBtn('rm-' + s.id, 'delStaff', '完全に削除', 'もう一度押すと記録ごと削除します', `data-id="${s.id}"`)}</div>`).join('')}</div>
     <div class="notice">利用停止した人は名前の一覧に出なくなり、過去の記録は残ります。「完全に削除」はその人の出勤・作業・アポ・粗利の記録もすべて消し、元に戻せません。テストで登録した人の片付けに使ってください。</div></div>`;
   return html;
+}
+function viewCards() {
+  const list = S.cardsFor ? activeStaff().filter(s => s.id === S.cardsFor) : activeStaff();
+  let html = `<div class="no-print"><div class="eyebrow">管理マスター・スタッフ</div><h1>個人QRカード</h1></div>
+    <div class="cardbar no-print"><button class="btn ghost" data-act="cardsBack">← スタッフ管理に戻る</button><button class="btn" data-act="print">印刷する</button>
+    <span class="sub">切り取って本人に渡すか、名札の裏などに貼ってください。</span></div>`;
+  if (!list.length) return html + `<div class="panel"><div class="empty">まだスタッフが登録されていません。</div></div>`;
+  return html + `<div class="cards">${list.map(s => `<div class="qcard">
+    <div class="rl">買取・出品ワークボード</div>
+    <div class="nm">${esc(s.name)} さん</div>
+    <div class="rl">${roleLbl(s)}</div>
+    <div class="qbox" data-qr="${esc(S.url + '?s=' + s.id)}"></div>
+    <div class="hint">スマホのカメラで読み取ると<br>あなたの画面が開きます。<br>このカードは本人だけが使ってください。</div></div>`).join('')}</div>`;
 }
 function viewPeek() {
   const all = activeStaff();
@@ -685,10 +712,12 @@ function render() {
   const focus = document.activeElement && document.activeElement.id;
   const vals = {}; app.querySelectorAll('input[id]:not([data-chg]):not([data-draft])').forEach(el => vals[el.id] = el.value);
   const banner = S.demo ? `<div class="notice">デモモードです。記録はこの端末のブラウザにだけ保存されます。</div>` : '';
-  if (S.isAdmin) app.innerHTML = banner + (S.view === 'peek' ? viewPeek() : viewAdmin());
+  if (S.isAdmin) app.innerHTML = banner + (S.view === 'peek' ? viewPeek() : S.view === 'cards' ? viewCards() : viewAdmin());
+  else if (S.card && !me) app.innerHTML = `<div class="panel"><div class="empty"><div class="big">このQRカードは使えません</div><div>登録が削除されたか、利用停止になっています。管理者に確認してください。</div></div></div>`;
   else app.innerHTML = banner + (me ? staffPage(me, false) : pickView());
   for (const id in vals) { const el = document.getElementById(id); if (el && !el.readOnly) el.value = vals[id]; }
   if (focus) { const el = document.getElementById(focus); if (el) el.focus(); }
+  if (window.QRCode) app.querySelectorAll('[data-qr]').forEach(el => { try { new QRCode(el, {text: el.dataset.qr, width: 168, height: 168, correctLevel: QRCode.CorrectLevel.M}); } catch (e) {} });
   const qr = document.getElementById('qr');
   if (qr && window.QRCode && S.url) { try { new QRCode(qr, {text: S.url, width: 176, height: 176, correctLevel: QRCode.CorrectLevel.M}); } catch (e) {} }
 }
@@ -713,6 +742,9 @@ document.addEventListener('click', e => {
     case 'pickMe': S.staffId = id; store.set('me', id); reload(); window.scrollTo(0, 0); break;
     case 'switchMe': S.staffId = ''; store.set('me', ''); reload(); break;
     case 'peekPick': S.peek = id; store.set('peek', id); break;
+    case 'cards': S.cardsFor = id || ''; S.view = 'cards'; window.scrollTo(0, 0); break;
+    case 'cardsBack': S.view = 'admin'; S.adminTab = 'staff'; break;
+    case 'print': try { window.print(); } catch (err) {} return;
     case 'openPeek': S.peek = id; store.set('peek', id); S.view = 'peek'; window.scrollTo(0, 0); break;
     case 'copy': {
       const el = document.getElementById(b.dataset.target);
