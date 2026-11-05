@@ -69,3 +69,5 @@ do $$ begin
   alter publication supabase_realtime add table listing_rows;
 exception when duplicate_object then null;
 end $$;
+alter table listing_rows add column if not exists no text not null default '';
+alter table listing_rows add column if not exists title text not null default '';

@@ -281,10 +281,10 @@ const CARD_ID = (new URLSearchParams(location.search).get('s') || '').slice(0, 6
 const S = {
   isAdmin: false, key: '', url: location.origin + location.pathname, demo: false,
   status: 'loading', card: CARD_ID, staffId: CARD_ID || store.get('me', ''), peek: store.get('peek', ''), cardsFor: '',
-  staff: [], att: [], logs: [], appos: [], tasks: [], listing: [], listingAt: 0, migrate: false,
+  staff: [], att: [], logs: [], appos: [], tasks: [], listing: [], listingRows: [], listingAt: 0, migrate: false,
   session: false, pin: null, remember: false, lastAct: Date.now(), reminded: '',
   date: todayStr(), view: 'me', adminTab: store.get('adminTab', 'now'),
-  draft: {task: '出品', hours: '1', count: '', appoType: 'unisound', appoTitle: '', regName: '', regRole: 'part', regStore: '相模原', regOther: '', addName: '', addRole: 'part', addStore: '相模原', addOther: '', taskTitle: '', taskNote: '', taskDue: todayStr(), taskTime: ''},
+  draft: {task: '出品', hours: '1', count: '', appoType: 'unisound', appoTitle: '', regName: '', regRole: 'part', regStore: '相模原', regOther: '', regCode: '', addName: '', addRole: 'part', addStore: '相模原', addOther: '', taskTitle: '', taskNote: '', taskDue: todayStr(), taskTime: ''},
   confirm: null, busy: 0, loadedMonth: null
 };
 
@@ -334,6 +334,7 @@ async function loadData() {
   let listing = [];
   try {
     const raw = await db.select('listing_rows', {month: m}), agg = {};
+    S.listingRows = raw.map(r => ({store: r.store, rowNo: Number(r.row_no) || 0, code: r.code || '', date: r.date, status: r.status || '', filled: r.filled || '', no: r.no || '', title: r.title || ''}));
     raw.forEach(r => {
       if (!countsAsListing(r)) return;
       const k = r.store + '_' + r.code + '_' + r.date;
@@ -362,6 +363,14 @@ const normCode = c => String(c || '').normalize('NFKC').toUpperCase().replace(/[
 const LISTING_REQUIRED_COLS = 'ABCDENO';
 const LISTING_EXCLUDE_STATUS = ['取消', '中止'];
 const countsAsListing = r => !!r.code && [...LISTING_REQUIRED_COLS].every(c => String(r.filled || '').includes(c)) && !LISTING_EXCLUDE_STATUS.some(x => String(r.status || '').startsWith(x));
+const COL_NAMES = {A: '番号', B: '出品担当', C: 'バイヤー', D: '商品名', E: '原価', N: '在庫コード', O: '出品日'};
+const KNOWN_CODES = ['A', 'B', 'C', 'D', 'F', 'G', 'H', 'I', 'N'];
+function codesFor(store) {
+  const set = new Set(S.listingRows.filter(r => r.code && (!store || r.store === store)).map(r => r.code));
+  const list = set.size ? [...set] : KNOWN_CODES;
+  return list.sort();
+}
+const codeOwner = (code, exceptId) => code ? activeStaff().find(s => s.listingCode === code && s.id !== exceptId) : null;
 const normRole = r => ['buyer', 'office', 'part'].includes(r) ? r : 'part';
 const normStore = (role, st) => role === 'part' ? (STORES.includes(st) ? st : STORES[0]) : role === 'office' ? (clean(st, 30) || '本社') : '';
 async function exec(action, a) {
@@ -371,7 +380,7 @@ async function exec(action, a) {
       const name = clean(a.name, 40); if (!name) throw new Error('名前を入力してください');
       const role = normRole(a.role), id = uid();
       const row = {id, name, role, store: normStore(role, a.store), active: true, created_at: now};
-      if (!S.migrate) row.pin_hash = '';
+      if (!S.migrate) { row.pin_hash = ''; row.listing_code = normCode(a.code); }
       await db.insert('staff', row);
       return {staffId: id};
     }
@@ -622,6 +631,7 @@ function viewOffice(p, peek) {
     const lt = autoListed(p.id, x => x === S.date), lm = autoListed(p.id, x => x.slice(0, 7) === month(S.date));
     html += `<div class="panel"><div class="titlerow"><h2>出品数</h2><span class="sub">出品表の担当コード ${esc(p.listingCode)} から自動集計${S.listingAt ? `・最終反映 ${hmOf(S.listingAt)}` : ''}</span></div>
       <div class="stats"><div class="stat"><div class="k">本日の出品</div><div class="v num">${lt}品</div></div><div class="stat"><div class="k">今月の出品</div><div class="v num">${lm}品</div></div></div></div>`;
+    html += listingDetail(p);
   }
   html += `<div class="grid2">${attendanceCard(p)}${taskAddForm(p)}</div>`;
   html += `<div class="panel"><div class="titlerow"><h2>タスク一覧</h2><span class="sub">完了したら丸を押す</span></div>${taskList(T, true)}</div>`;
@@ -668,6 +678,32 @@ function pinModal() {
     <label class="remember"><input type="checkbox" id="pin-remember" ${S.remember ? 'checked' : ''}> このスマホを覚える（自分専用のスマホのときだけ）</label>
     ${P.mode === 'enter' ? `<div class="sub" style="font-size:12px">番号を忘れたときは管理者に「番号リセット」を頼んでください。</div>` : ''}</div></div>`;
 }
+function codePicker() {
+  const store = S.draft.regRole === 'part' ? S.draft.regStore : '';
+  const codes = codesFor(store), cur = S.draft.regCode;
+  return `<div class="field"><label>出品担当コード（出品表のB列）</label>
+    <div class="nowchips">${codes.map(c => { const o = codeOwner(c); return `<button class="chip" data-act="draftSet" data-k="regCode" data-v="${esc(c)}" aria-pressed="${cur === c}" ${o ? 'disabled style="opacity:.45"' : ''}>${esc(c)}${o ? `（${esc(o.name)}さん使用中）` : ''}</button>`; }).join('')}
+    <button class="chip" data-act="draftSet" data-k="regCode" data-v="" aria-pressed="${!cur}">コードなし・わからない</button></div>
+    <div class="sub" style="font-size:12px">${store ? store + 'の出品表に出てくるコードです。' : ''}選んだコードの出品数が、自動であなたの出品数になります。</div></div>`;
+}
+function listingDetail(p) {
+  if (!p.listingCode) return '';
+  const rows = S.listingRows.filter(r => r.code === p.listingCode && r.date === S.date).sort((a, b) => a.store.localeCompare(b.store) || a.rowNo - b.rowNo);
+  const reason = r => {
+    const miss = [...LISTING_REQUIRED_COLS].filter(c => !r.filled.includes(c));
+    if (miss.length) return miss.map(c => `${c}列（${COL_NAMES[c]}）`).join('・') + 'が未入力';
+    if (LISTING_EXCLUDE_STATUS.some(x => r.status.startsWith(x))) return `決済が「${r.status}」のため対象外`;
+    return '';
+  };
+  const ok = rows.filter(countsAsListing).length;
+  return `<div class="panel"><div class="titlerow"><h2>今日の出品の明細</h2><span class="sub">出品表の担当コード ${esc(p.listingCode)}・数えた ${ok}件／${rows.length}行${S.listingAt ? `・${hmOf(S.listingAt)} 時点` : ''}</span></div>
+    ${rows.length ? `<div class="list">${rows.map(r => { const why = countsAsListing(r) ? '' : reason(r); return `<div class="row">
+      <span class="chk" aria-hidden="true" style="${why ? '' : 'background:var(--good-ring);border-color:var(--good-ring)'};cursor:default">${why ? '' : '✓'}</span>
+      <div class="grow"><div style="font-weight:600">${esc(r.no || r.store + ' ' + r.rowNo + '行目')}<span class="sub">　${esc(r.store)}</span></div><div class="tn" style="font-size:13px;color:var(--muted);overflow-wrap:anywhere">${esc(r.title || '（商品名なし）')}</div>
+      ${why ? `<div style="font-size:12px;color:var(--bad);margin-top:2px">数えていません：${esc(why)}</div>` : ''}</div></div>`; }).join('')}</div>`
+      : `<div class="empty" style="padding:16px">この日の出品表に、コード ${esc(p.listingCode)} の行はまだありません。</div>`}
+    <div class="notice">A・B・C・D・E・N・O列がすべて入力された行を1件として数えます。未入力があれば出品表を直すと、10分以内に反映されます。</div></div>`;
+}
 function pickView() {
   const all = activeStaff(), ord = {on: 0, done: 1, none: 2};
   const sorted = list => [...list].sort((a, b) => ord[attStatus(attOf(a.id))] - ord[attStatus(attOf(b.id))]);
@@ -681,6 +717,7 @@ function pickView() {
     <div class="field"><label>区分</label>${roleSeg('regRole', S.draft.regRole)}</div>
     ${placeFields('regRole', 'regStore', 'regOther')}
    </div>
+   ${S.draft.regRole !== 'buyer' && !S.migrate ? codePicker() : ''}
    <div><button class="btn lg" data-act="register">登録して暗証番号を決める</button></div></div>`;
   return html;
 }
@@ -697,6 +734,7 @@ function viewPart(p, peek) {
     </div></div>
     <div class="notice">${d.auto ? `出品数は出品表の担当コード <b>${esc(p.listingCode)}</b> から自動集計しています${S.listingAt ? `（最終反映 ${hmOf(S.listingAt)}）` : ''}。` : ''}目標は${d.targetByWork ? '「勤務時間 × ' + PER_HOUR + '品」（出品の作業時間を記録するとそちらで計算）' : '「出品の作業時間 × ' + PER_HOUR + '品」'}で自動計算します。${a && a.in && unassigned >= .25 ? `勤務時間のうち <b class="num">${fmtH(unassigned)}</b> がまだ作業に振り分けられていません。` : ''}</div></div>`;
   html += `<div class="grid2">${attendanceCard(p)}${taskForm(p)}</div>`;
+  html += listingDetail(p);
   html += `<div class="panel"><div class="titlerow"><h2>今日の作業</h2><span class="sub num">合計 ${fmtH(d.logged)}</span></div>
     <div class="grid4 tight">${TASKS.map(t => `<div><div class="eyebrow">${t}</div><div class="stat"><div class="v num">${fmtH(d.by[t].hours)}</div><div class="k num">${d.by[t].count ? d.by[t].count + (t === '出品' ? '品' : '件') : '—'}</div></div></div>`).join('')}</div>
     ${d.logs.length ? `<div class="list">${d.logs.map(l => `<div class="row">
@@ -972,7 +1010,7 @@ document.addEventListener('click', e => {
     case 'retry': S.status = 'loading'; render(); reload(); return;
     case 'task': S.draft.task = b.dataset.v; S.draft.count = ''; break;
     case 'appoType': S.draft.appoType = b.dataset.v; break;
-    case 'draftSet': S.draft[b.dataset.k] = b.dataset.v; break;
+    case 'draftSet': S.draft[b.dataset.k] = b.dataset.v; if (b.dataset.k === 'regStore' || b.dataset.k === 'regRole') S.draft.regCode = ''; break;
     case 'adminTab': S.adminTab = b.dataset.v; store.set('adminTab', S.adminTab); break;
     case 'ask': S.confirm = b.dataset.k; break;
     case 'pickMe': {
@@ -1008,9 +1046,10 @@ document.addEventListener('click', e => {
     case 'register': {
       const name = S.draft.regName.trim(); if (!name) { toast('名前を入力してください'); document.getElementById('r-name')?.focus(); return; }
       const st = draftStore('regStore', 'regOther'); if (S.draft.regRole === 'office' && !st) { toast('拠点名を入力してください'); return; }
-      call('register', {name, role: S.draft.regRole, store: st}).then(data => {
+      if (S.draft.regCode && codeOwner(S.draft.regCode)) { toast('そのコードはほかの人が使っています'); return; }
+      call('register', {name, role: S.draft.regRole, store: st, code: S.draft.regRole === 'buyer' ? '' : S.draft.regCode}).then(data => {
         if (data && data.result && data.result.staffId) {
-          S.draft.regName = ''; toast(`${name} さん、登録しました`);
+          S.draft.regName = ''; S.draft.regCode = ''; toast(`${name} さん、登録しました`);
           if (S.migrate) login(data.result.staffId); else { S.pin = {id: data.result.staffId, mode: 'set1', buf: '', first: '', err: ''}; S.remember = false; render(); }
         }
       });
@@ -1082,6 +1121,7 @@ document.addEventListener('change', e => {
     const s = S.staff.find(x => x.id === id);
     call('updateStaff', {id, role: el.value, store: el.value === 'part' ? (STORES.includes(s && s.store) ? s.store : '相模原') : el.value === 'office' ? ((s && s.store) || '本社') : ''}, '区分を変更しました');
   } else if (c === 'listingCode') {
+    const dup = codeOwner(normCode(el.value), id); if (dup) { toast(`コード ${normCode(el.value)} は ${dup.name} さんが使っています`); render(); return; }
     call('setListingCode', {id, code: el.value}, el.value.trim() ? `出品コードを ${normCode(el.value)} にしました` : '出品コードを外しました');
   } else if (c === 'placeText') {
     if (el.value.trim()) call('setPlace', {staffId: id, date: S.date, place: el.value.trim()}, `勤務場所：${el.value.trim()}`);

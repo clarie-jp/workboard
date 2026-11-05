@@ -45,7 +45,7 @@ function sync() {
       let filled = '';
       for (let c = 0; c < letters.length; c++) if (String(r[c]).trim() !== '') filled += letters[c];
       rows.push({id: src.store + '_' + (i + 2), store: src.store, row_no: i + 2, code: normCode(r[COL_CODE - 1]), date: date, month: date.slice(0, 7),
-        status: String(r[COL_STATUS - 1]).trim().slice(0, 30), filled: filled, updated_at: now.getTime()});
+        status: String(r[COL_STATUS - 1]).trim().slice(0, 30), filled: filled, no: String(r[0]).trim().slice(0, 20), title: String(r[3]).replace(/\s+/g, ' ').trim().slice(0, 90), updated_at: now.getTime()});
     });
   });
   // 対象月の行を入れ直す（シートで消された行・空欄に戻された行は、ここで反映されて件数が減る）
