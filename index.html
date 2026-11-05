@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>買取・出品ワークボード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+
+/* Layout: frosted sticky header + segmented nav, single centered column of quiet white panels, rings carry the progress story */
+:root{
+  --bg:#f5f5f7; --surface:#ffffff; --surface2:#f0f0f3; --fg:#1d1d1f; --muted:#6e6e73; --faint:#aeaeb2;
+  --line:rgba(0,0,0,.08); --accent:#0071e3; --accent-soft:rgba(0,113,227,.10);
+  --good:#248a3d; --good-ring:#34c759; --warn:#b25000; --warn-ring:#ff9f0a; --bad:#d70015;
+  --track:rgba(0,0,0,.07); --glass:rgba(245,245,247,.78); --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 24px rgba(0,0,0,.05);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+  --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --r:18px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#000000; --surface:#1c1c1e; --surface2:#2c2c2e; --fg:#f5f5f7; --muted:#98989d; --faint:#636366;
+  --line:rgba(255,255,255,.10); --accent:#0a84ff; --accent-soft:rgba(10,132,255,.18);
+  --good:#30d158; --good-ring:#30d158; --warn:#ff9f0a; --warn-ring:#ff9f0a; --bad:#ff453a;
+  --track:rgba(255,255,255,.10); --glass:rgba(0,0,0,.72); --shadow:none; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#000000; --surface:#1c1c1e; --surface2:#2c2c2e; --fg:#f5f5f7; --muted:#98989d; --faint:#636366;
+  --line:rgba(255,255,255,.10); --accent:#0a84ff; --accent-soft:rgba(10,132,255,.18);
+  --good:#30d158; --good-ring:#30d158; --warn:#ff9f0a; --warn-ring:#ff9f0a; --bad:#ff453a;
+  --track:rgba(255,255,255,.10); --glass:rgba(0,0,0,.72); --shadow:none; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--glass)}
+button,input,select{font:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1080px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--glass);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--line)}
+.hbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:12px}
+.brand{font-family:var(--display);font-weight:700;font-size:17px;letter-spacing:-.01em;margin-right:auto}
+.brand small{display:block;font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.04em}
+.datebox{display:flex;align-items:center;gap:4px}
+.datebox input{border:none;background:var(--surface2);border-radius:10px;padding:6px 10px;font-size:14px}
+.iconbtn{border:none;background:transparent;width:32px;height:32px;border-radius:50%;cursor:pointer;color:var(--accent);font-size:18px;line-height:1}
+.iconbtn:hover{background:var(--accent-soft)}
+.today-btn{border:none;background:transparent;color:var(--accent);cursor:pointer;font-size:14px;padding:4px 6px}
+
+.seg{display:inline-flex;background:var(--surface2);border-radius:10px;padding:2px;gap:2px;max-width:100%;overflow-x:auto}
+.seg button{border:none;background:transparent;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;color:var(--fg);white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.nav{padding-bottom:12px}
+.nav .seg{display:flex;width:100%}
+.nav .seg button{flex:1;padding:8px 10px}
+
+main{padding-block:24px 64px;display:grid;gap:20px}
+h1{font-family:var(--display);font-size:clamp(26px,4vw,34px);font-weight:700;letter-spacing:-.02em;margin:0;text-wrap:balance}
+h2{font-family:var(--display);font-size:20px;font-weight:700;letter-spacing:-.01em;margin:0;text-wrap:balance}
+h3{font-size:15px;font-weight:600;margin:0}
+.sub{color:var(--muted);font-size:14px}
+.eyebrow{font-size:12px;color:var(--muted);letter-spacing:.06em;font-weight:500}
+.titlerow{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+.panel{background:var(--surface);border-radius:var(--r);padding:20px;box-shadow:var(--shadow);display:grid;gap:16px;min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 16px;cursor:pointer;font-size:14px;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+
+.hero{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center}
+@media (max-width:520px){.hero{grid-template-columns:1fr;justify-items:center;text-align:center}}
+.ring{position:relative;width:148px;height:148px;flex:none}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .c{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.ring .pct{font-family:var(--display);font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1}
+.ring .lbl{font-size:11px;color:var(--muted);margin-top:4px}
+.ring.sm{width:72px;height:72px}.ring.sm .pct{font-size:16px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:16px;min-width:0}
+.stat .v{font-family:var(--display);font-size:24px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.stat .k{font-size:12px;color:var(--muted)}
+
+.kpi{background:var(--surface);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);display:flex;gap:14px;align-items:center;min-width:0}
+.kpi .v{font-family:var(--display);font-size:22px;font-weight:700;line-height:1.2}
+.kpi .k{font-size:12px;color:var(--muted)}
+
+.bar{height:8px;border-radius:99px;background:var(--track);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--accent);transition:width .5s ease}
+.bar.good i{background:var(--good-ring)} .bar.warn i{background:var(--warn-ring)}
+
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--surface2);color:var(--muted);white-space:nowrap}
+.pill.on{background:rgba(52,199,89,.15);color:var(--good)}
+.pill.done{background:var(--accent-soft);color:var(--accent)}
+.pill.u{background:var(--accent-soft);color:var(--accent)}
+.pill.m{background:rgba(255,159,10,.16);color:var(--warn)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+
+.btn{border:none;border-radius:12px;padding:11px 18px;font-weight:600;cursor:pointer;background:var(--accent);color:#fff;font-size:15px}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:var(--surface2);color:var(--fg)}
+.btn.lg{padding:14px 22px;font-size:16px;border-radius:14px}
+.btn.danger{background:var(--bad);color:#fff}
+.btn:disabled{opacity:.4;cursor:default}
+.link{border:none;background:none;color:var(--accent);cursor:pointer;padding:4px;font-size:14px}
+.link.red{color:var(--bad)}
+:focus-visible{outline:3px solid var(--accent-soft);outline-offset:2px;box-shadow:0 0 0 2px var(--accent)}
+
+.field{display:grid;gap:6px;min-width:0}
+.field label{font-size:12px;color:var(--muted);font-weight:500}
+.input{width:100%;border:1px solid var(--line);background:var(--surface2);border-radius:10px;padding:10px 12px;font-size:15px;min-width:0}
+.input:focus{outline:none;border-color:var(--accent);background:var(--surface)}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;align-items:end}
+
+.choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.choice button{border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:14px;text-align:left;cursor:pointer;display:grid;gap:2px}
+.choice button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.choice b{font-size:15px}.choice span{font-size:12px;color:var(--muted)}
+.choice.four{grid-template-columns:repeat(4,1fr)}
+@media (max-width:520px){.choice.four{grid-template-columns:repeat(2,1fr)}}
+.choice.four button{text-align:center;padding:12px 8px}
+
+.attend{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.attend .times{display:flex;gap:12px;flex-wrap:wrap;flex:1;min-width:0}
+.attend .times .field{width:120px}
+
+.list{display:grid}
+.row{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line);min-width:0}
+.row:first-child{border-top:none}
+.row .grow{flex:1;min-width:0}
+.row .amt{font-weight:600}
+
+.appo{border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:12px}
+.appo-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.appo-head .grow{flex:1;min-width:0;font-weight:600}
+.addline{display:grid;grid-template-columns:1fr 1.3fr auto;gap:8px}
+@media (max-width:520px){.addline{grid-template-columns:1fr 1fr}.addline .btn{grid-column:1/-1}}
+
+.tbl{overflow-x:auto;margin-inline:-4px}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+th{font-size:12px;font-weight:500;color:var(--muted);text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:12px 10px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+td.r,th.r{text-align:right}
+tr:last-child td{border-bottom:none}
+td .bar{width:90px;display:inline-block;vertical-align:middle;margin-right:8px}
+td input.input{padding:6px 8px;width:110px}
+td select.input{padding:6px 8px;width:auto}
+
+.empty{text-align:center;padding:32px 16px;color:var(--muted);display:grid;gap:10px;justify-items:center}
+.empty .big{font-family:var(--display);font-size:19px;font-weight:600;color:var(--fg)}
+.notice{background:var(--surface2);border-radius:12px;padding:12px 14px;font-size:13px;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:99px;font-size:14px;font-weight:500;opacity:0;transition:.25s;pointer-events:none;z-index:20}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.pcard{background:var(--surface);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);display:grid;gap:10px;min-width:0;border:1px solid transparent}
+.pcard.on{border-color:rgba(52,199,89,.35)}
+.pcard.none{opacity:.62}
+.pcard .top{display:flex;align-items:center;gap:8px}
+.pcard .nm{font-weight:700;font-size:16px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcard .meta{font-size:12px;color:var(--muted)}
+.pcard .now{font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:-.01em;line-height:1.3;overflow-wrap:anywhere}
+.pcard .now small{display:block;font-family:var(--font);font-size:12px;font-weight:500;color:var(--muted);letter-spacing:0}
+.pcard .prog{display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;font-size:12px;color:var(--muted)}
+.pcard .prog .bar{grid-column:1/-1}
+.grouphead{display:flex;align-items:baseline;gap:10px;margin-top:4px}
+.grouphead .sub{font-size:13px}
+.nowchips{display:flex;flex-wrap:wrap;gap:8px}
+.nowchips .chip{font-size:13px;padding:6px 12px}
+.livedot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good-ring);margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+.saving{font-size:12px;color:var(--muted)}
+.pcard{cursor:pointer;transition:transform .15s ease}
+.pcard:hover{transform:translateY(-2px)}
+.copyrow{display:flex;gap:8px}
+.copyrow .input{flex:1;font-size:13px}
+.hero .stats{width:100%}
+.grid4.tight{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+.qr{width:192px;padding:8px;background:#fff;border-radius:12px}
+.qr img,.qr canvas{display:block}
+
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap hbar">
+    <div class="brand">買取・出品ワークボード<small id="whoami">BUYER &amp; STAFF</small></div>
+    <span class="saving" id="saving" hidden>保存中…</span>
+    <div class="datebox">
+      <button class="iconbtn" data-act="day" data-d="-1" aria-label="前日">‹</button>
+      <input type="date" id="date" aria-label="日付">
+      <button class="iconbtn" data-act="day" data-d="1" aria-label="翌日">›</button>
+      <button class="today-btn" data-act="today">今日</button>
+    </div>
+  </div>
+  <div class="wrap nav" id="navwrap" hidden>
+    <div class="seg" role="tablist" id="nav">
+      <button data-act="view" data-v="admin">管理マスター</button>
+      <button data-act="view" data-v="peek">スタッフ画面</button>
+    </div>
+  </div>
+</header>
+<main class="wrap" id="app">
+  <div class="panel"><div class="empty"><div class="big">読み込み中…</div><div>スタッフと記録を取得しています。</div></div></div>
+</main>
+<div class="toast" id="toast" role="status"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+(() => {
+const PER_HOUR = 4;
+const TARGET = {unisound: 80000, mansion: 600000};
+const TYPE = {unisound: {name: 'UNISOUND', unit: '1件あたり', cls: 'u'}, mansion: {name: 'マンション買取', unit: '1人あたり', cls: 'm'}};
+const TASKS = ['出品', '梱包', '発送', '整理'];
+const STORES = ['相模原', '新山下'];
+const BREAKS = [0, 15, 30, 45, 60, 90, 120];
+
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const todayStr = () => ymd(new Date());
+const nowHM = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const hmOf = ts => { if (!ts) return ''; const d = new Date(Number(ts)); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const toMin = hm => { if (!hm) return null; const [h, m] = String(hm).split(':').map(Number); return h * 60 + m; };
+const yen = n => '¥' + Math.round(Number(n) || 0).toLocaleString('ja-JP');
+const fmtH = h => (Math.round(h * 10) / 10).toLocaleString('ja-JP', {maximumFractionDigits: 1}) + 'h';
+const rate = (v, t) => t > 0 ? v / t : 0;
+const pctTxt = (v, t) => t > 0 ? Math.round(v / t * 100) + '%' : '—';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const dowJ = ds => '日月火水木金土'[new Date(ds + 'T00:00').getDay()];
+const month = d => d.slice(0, 7);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('wbg_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('wbg_' + k, JSON.stringify(v)); } catch (e) {} }
+};
+
+const S = {
+  isAdmin: false, key: '', url: location.origin + location.pathname, demo: false,
+  status: 'loading', staffId: store.get('me', ''), peek: store.get('peek', ''),
+  staff: [], att: [], logs: [], appos: [],
+  date: todayStr(), view: 'me', adminTab: store.get('adminTab', 'now'),
+  draft: {task: '出品', hours: '1', count: '', appoType: 'unisound', appoTitle: '', regName: '', regRole: 'part', regStore: '相模原', addName: '', addRole: 'part', addStore: '相模原'},
+  confirm: null, busy: 0, loadedMonth: null
+};
+
+let tt; function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2400); }
+
+/* ---------- backend ---------- */
+const CFG = window.WB_CONFIG || {};
+const params = new URLSearchParams(location.search);
+const ZERO = '00000000-0000-0000-0000-000000000000';
+const uid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+async function sha256(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+const TABLES = ['staff', 'attendance', 'logs', 'appos', 'profits'];
+
+function supabaseDb() {
+  const c = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey);
+  const chk = r => { if (r.error) throw r.error; return r.data; };
+  return {
+    async select(t, f) { let q = c.from(t).select('*'); for (const k in f) q = q.eq(k, f[k]); return chk(await q); },
+    async insert(t, row) { chk(await c.from(t).insert(row)); },
+    async insertIgnore(t, row) { chk(await c.from(t).upsert(row, {onConflict: 'id', ignoreDuplicates: true})); },
+    async update(t, id, p) { chk(await c.from(t).update(p).eq('id', id)); },
+    async remove(t, id) { chk(await c.from(t).delete().eq('id', id)); },
+    subscribe(cb) { const ch = c.channel('workboard'); TABLES.forEach(t => ch.on('postgres_changes', {event: '*', schema: 'public', table: t}, cb)); ch.subscribe(); }
+  };
+}
+function localDb() {
+  const get = t => { try { return JSON.parse(localStorage.getItem('wbdemo_' + t) || '[]'); } catch (e) { return []; } };
+  const put = (t, v) => { try { localStorage.setItem('wbdemo_' + t, JSON.stringify(v)); } catch (e) {} };
+  const cascade = (t, id) => { if (t === 'staff') TABLES.slice(1).forEach(x => put(x, get(x).filter(r => r.staff_id !== id))); if (t === 'appos') put('profits', get('profits').filter(r => r.appo_id !== id)); };
+  return {
+    async select(t, f) { return get(t).filter(r => Object.keys(f).every(k => r[k] === f[k])); },
+    async insert(t, row) { put(t, [...get(t), row]); },
+    async insertIgnore(t, row) { const v = get(t); if (!v.some(r => r.id === row.id)) put(t, [...v, row]); },
+    async update(t, id, p) { put(t, get(t).map(r => r.id === id ? Object.assign({}, r, p) : r)); },
+    async remove(t, id) { put(t, get(t).filter(r => r.id !== id)); cascade(t, id); },
+    subscribe(cb) { window.addEventListener('storage', e => { if (e.key && e.key.startsWith('wbdemo_')) cb(); }); }
+  };
+}
+let db = null;
+
+async function loadData() {
+  const m = month(S.date);
+  const f = S.isAdmin ? {month: m} : {month: m, staff_id: S.staffId || ZERO};
+  const [staff, att, logs, appos, profits] = await Promise.all([db.select('staff', {}), db.select('attendance', f), db.select('logs', f), db.select('appos', f), db.select('profits', f)]);
+  return {
+    month: m,
+    staff: staff.map(s => ({id: s.id, name: s.name, role: s.role, store: s.store || '', active: s.active !== false, createdAt: Number(s.created_at) || 0})),
+    att: att.map(a => ({id: a.id, staffId: a.staff_id, date: a.date, in: a.clock_in || '', out: a.clock_out || '', breakMin: Number(a.break_min) || 0, nowLabel: a.now_label || '', nowSince: a.now_since || ''})),
+    logs: logs.map(l => ({id: l.id, staffId: l.staff_id, date: l.date, task: l.task, hours: Number(l.hours) || 0, count: Number(l.count) || 0, createdAt: Number(l.created_at) || 0})),
+    appos: appos.map(a => ({id: a.id, staffId: a.staff_id, date: a.date, type: a.type, title: a.title || '', target: Number(a.target) || 0, createdAt: Number(a.created_at) || 0,
+      profits: profits.filter(p => p.appo_id === a.id).sort((x, y) => x.created_at - y.created_at).map(p => ({id: p.id, amount: Number(p.amount) || 0, note: p.note || '', at: p.at || ''}))}))
+  };
+}
+const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, n || 80);
+async function exec(action, a) {
+  const now = Date.now(), attId = (sid, d) => sid + '_' + d;
+  switch (action) {
+    case 'register': {
+      const name = clean(a.name, 40); if (!name) throw new Error('名前を入力してください');
+      const role = a.role === 'buyer' ? 'buyer' : 'part', id = uid();
+      await db.insert('staff', {id, name, role, store: role === 'part' ? (STORES.includes(a.store) ? a.store : STORES[0]) : '', active: true, created_at: now});
+      return {staffId: id};
+    }
+    case 'updateStaff': {
+      const p = {};
+      if (a.role) { p.role = a.role === 'buyer' ? 'buyer' : 'part'; p.store = p.role === 'part' ? (STORES.includes(a.store) ? a.store : STORES[0]) : ''; }
+      else if (a.store) p.store = STORES.includes(a.store) ? a.store : STORES[0];
+      if (a.active !== undefined) p.active = !!a.active;
+      return db.update('staff', a.id, p);
+    }
+    case 'clockIn': return db.insertIgnore('attendance', {id: attId(a.staffId, a.date), staff_id: a.staffId, date: a.date, month: month(a.date), clock_in: a.time, clock_out: '', break_min: 0, now_label: '', now_since: '', updated_at: now});
+    case 'clockOut': return db.update('attendance', attId(a.staffId, a.date), {clock_out: a.time, now_label: '', now_since: '', updated_at: now});
+    case 'setAtt': {
+      const col = {in: 'clock_in', out: 'clock_out', breakMin: 'break_min'}[a.field]; if (!col) throw new Error('変更できない項目です');
+      return db.update('attendance', attId(a.staffId, a.date), {[col]: a.field === 'breakMin' ? Math.max(0, Number(a.value) || 0) : a.value, updated_at: now});
+    }
+    case 'setNow': return db.update('attendance', attId(a.staffId, a.date), {now_label: clean(a.label, 60), now_since: a.label ? a.since : '', updated_at: now});
+    case 'delAtt': return db.remove('attendance', attId(a.staffId, a.date));
+    case 'addLog': {
+      if (!TASKS.includes(a.task)) throw new Error('作業の種類が正しくありません');
+      const hours = Math.round(Math.max(0, Math.min(24, Number(a.hours) || 0)) * 2) / 2; if (!hours) throw new Error('作業時間を選んでください');
+      return db.insert('logs', {id: uid(), staff_id: a.staffId, date: a.date, month: month(a.date), task: a.task, hours, count: Math.max(0, Math.round(Number(a.count) || 0)), created_at: now});
+    }
+    case 'delLog': return db.remove('logs', a.id);
+    case 'addAppo': {
+      const type = a.type === 'mansion' ? 'mansion' : 'unisound';
+      return db.insert('appos', {id: uid(), staff_id: a.staffId, date: a.date, month: month(a.date), type, title: clean(a.title, 80), target: TARGET[type], created_at: now});
+    }
+    case 'delAppo': return db.remove('appos', a.id);
+    case 'addProfit': {
+      const ap = S.appos.find(x => x.id === a.appoId); if (!ap) throw new Error('アポが見つかりません');
+      return db.insert('profits', {id: uid(), appo_id: ap.id, staff_id: ap.staffId, date: ap.date, month: month(ap.date), amount: Math.round(Number(a.amount)), note: clean(a.note, 80), at: a.at || '', created_at: now});
+    }
+    case 'delProfit': return db.remove('profits', a.id);
+  }
+  throw new Error('不明な操作です');
+}
+function apply(data) {
+  S.staff = data.staff || [];
+  S.att = (data.att || []).map(a => Object.assign(a, {now: a.nowLabel ? {label: a.nowLabel, since: a.nowSince} : null}));
+  S.logs = data.logs || []; S.appos = data.appos || [];
+  S.loadedMonth = data.month; S.status = 'ready';
+}
+const errText = e => (e && e.message && /[ぁ-んァ-ン一-龥]/.test(e.message)) ? e.message : '保存できませんでした。通信を確認してもう一度お試しください';
+async function call(action, args, okMsg) {
+  const write = action !== 'load';
+  if (write) { S.busy++; document.getElementById('saving').hidden = false; }
+  try {
+    const result = write ? await exec(action, args || {}) : null;
+    const data = await loadData();
+    apply(data); data.result = result || null;
+    if (okMsg) toast(okMsg);
+    render();
+    return data;
+  } catch (err) {
+    console.error(err); toast(errText(err));
+    if (S.status === 'loading') { S.status = 'error'; render(); }
+    return null;
+  } finally {
+    if (write) { S.busy = Math.max(0, S.busy - 1); document.getElementById('saving').hidden = S.busy === 0; }
+  }
+}
+const reload = () => call('load');
+
+/* ---------- derived ---------- */
+const activeStaff = () => S.staff.filter(s => s.active !== false).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+const attOf = (id, date = S.date) => S.att.find(a => a.staffId === id && a.date === date);
+function workHours(a) {
+  if (!a || !a.in) return 0;
+  let end = toMin(a.out);
+  if (end == null) { if (a.date !== todayStr()) return 0; end = toMin(nowHM()); }
+  return Math.max(0, (end - toMin(a.in) - (Number(a.breakMin) || 0)) / 60);
+}
+const attStatus = a => !a || !a.in ? 'none' : a.out ? 'done' : 'on';
+function partDay(id, date = S.date) {
+  const logs = S.logs.filter(l => l.staffId === id && l.date === date).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const by = {}; TASKS.forEach(t => by[t] = {hours: 0, count: 0});
+  logs.forEach(l => { if (by[l.task]) { by[l.task].hours += Number(l.hours) || 0; by[l.task].count += Number(l.count) || 0; } });
+  return {logs, by, target: by['出品'].hours * PER_HOUR, listed: by['出品'].count, logged: logs.reduce((s, l) => s + (Number(l.hours) || 0), 0)};
+}
+function partMonth(id) {
+  const logs = S.logs.filter(l => l.staffId === id && l.task === '出品');
+  return {target: logs.reduce((s, l) => s + (Number(l.hours) || 0), 0) * PER_HOUR, listed: logs.reduce((s, l) => s + (Number(l.count) || 0), 0)};
+}
+const appoProfit = a => (a.profits || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+function buyerDay(id, date = S.date) {
+  const appos = S.appos.filter(a => a.staffId === id && a.date === date).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  return {appos, target: appos.reduce((s, a) => s + (Number(a.target) || 0), 0), profit: appos.reduce((s, a) => s + appoProfit(a), 0)};
+}
+function buyerMonth(id) {
+  const appos = S.appos.filter(a => a.staffId === id);
+  return {target: appos.reduce((s, a) => s + (Number(a.target) || 0), 0), profit: appos.reduce((s, a) => s + appoProfit(a), 0)};
+}
+function monthAtt(id) { const rows = S.att.filter(a => a.staffId === id && a.in); return {days: rows.length, hours: rows.reduce((s, a) => s + workHours(a), 0)}; }
+const roleLbl = s => s.role === 'buyer' ? '社員（バイヤー）' : `アルバイト・${s.store || '店舗未設定'}`;
+
+/* ---------- atoms ---------- */
+function ring(v, t, label, sm) {
+  const r = 52, C = 2 * Math.PI * r, p = rate(v, t), shown = Math.min(1, p);
+  const color = t <= 0 ? 'var(--track)' : p >= 1 ? 'var(--good-ring)' : p >= .6 ? 'var(--accent)' : 'var(--warn-ring)';
+  return `<div class="ring${sm ? ' sm' : ''}"><svg viewBox="0 0 120 120" aria-hidden="true">
+    <circle cx="60" cy="60" r="${r}" fill="none" stroke="var(--track)" stroke-width="12"/>
+    <circle cx="60" cy="60" r="${r}" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - shown)}" style="transition:stroke-dashoffset .6s ease"/></svg>
+    <div class="c"><div class="pct num">${pctTxt(v, t)}</div>${label ? `<div class="lbl">${label}</div>` : ''}</div></div>`;
+}
+function bar(v, t) { const p = rate(v, t); return `<div class="bar ${p >= 1 ? 'good' : p < .6 && t > 0 ? 'warn' : ''}"><i style="width:${Math.min(100, p * 100)}%"></i></div>`; }
+function statusPill(a) {
+  const s = attStatus(a);
+  if (s === 'on') return `<span class="pill on"><span class="dot"></span>勤務中</span>`;
+  if (s === 'done') return `<span class="pill done">退勤済</span>`;
+  return `<span class="pill">未出勤</span>`;
+}
+const dateLabel = () => { const [, m, d] = S.date.split('-'); return `${Number(m)}月${Number(d)}日（${dowJ(S.date)}）${S.date === todayStr() ? '・今日' : ''}`; };
+const confirmBtn = (key, act, label, sure, extra = '') => `<button class="link red" data-act="${S.confirm === key ? act : 'ask'}" data-k="${key}" ${extra}>${S.confirm === key ? sure : label}</button>`;
+
+/* ---------- attendance + now ---------- */
+function nowOptions(p) {
+  if (p.role === 'buyer') return [...buyerDay(p.id).appos.map(a => '査定中：' + (a.title || TYPE[a.type].name)), '移動中', '事務作業', '休憩'];
+  return [...TASKS.map(t => t + '作業中'), '休憩'];
+}
+function attendanceCard(p) {
+  const a = attOf(p.id), st = attStatus(a), isToday = S.date === todayStr();
+  let action = '';
+  if (st === 'none') action = `<button class="btn lg" data-act="clockIn" data-id="${p.id}">${isToday ? '出勤する' : 'この日の出勤を記録'}</button>`;
+  else if (st === 'on') action = `<button class="btn lg" data-act="clockOut" data-id="${p.id}">退勤する</button>`;
+  const cur = a && a.now && a.now.label;
+  return `<div class="panel"><div class="titlerow"><h2>出勤</h2>${statusPill(a)}</div>
+  <div class="attend">
+    ${a && a.in ? `<div class="times">
+      <div class="field"><label for="in-${p.id}">出勤</label><input class="input num" type="time" id="in-${p.id}" value="${esc(a.in)}" data-chg="att" data-id="${p.id}" data-f="in"></div>
+      <div class="field"><label for="out-${p.id}">退勤</label><input class="input num" type="time" id="out-${p.id}" value="${esc(a.out || '')}" data-chg="att" data-id="${p.id}" data-f="out"></div>
+      <div class="field"><label for="br-${p.id}">休憩</label><select class="input" id="br-${p.id}" data-chg="att" data-id="${p.id}" data-f="breakMin">
+        ${BREAKS.map(m => `<option value="${m}" ${Number(a.breakMin || 0) === m ? 'selected' : ''}>${m}分</option>`).join('')}</select></div>
+      <div class="stat"><div class="k">実働</div><div class="v num">${fmtH(workHours(a))}</div></div>
+    </div>` : `<div class="sub" style="flex:1">${isToday ? 'ボタンを押すと現在時刻で出勤を記録します。' : 'この日の出勤記録はありません。'}</div>`}
+    ${action}
+  </div>
+  ${st === 'on' && isToday ? `<div class="field"><label>いま何をしていますか（管理マスターに表示されます）</label>
+    <div class="nowchips">${nowOptions(p).map(o => `<button class="chip" data-act="setNow" data-id="${p.id}" data-v="${esc(o)}" aria-pressed="${cur === o}">${esc(o)}</button>`).join('')}</div></div>` : ''}
+  ${a && a.in ? `<div>${confirmBtn('att-' + p.id, 'delAtt', '出勤記録を取り消す', 'もう一度押すと出勤記録を取り消します', `data-id="${p.id}"`)}</div>` : ''}
+  </div>`;
+}
+
+/* ---------- staff pages ---------- */
+function staffPage(p, peek) {
+  return p.role === 'buyer' ? viewBuyer(p, peek) : viewPart(p, peek);
+}
+function pickView() {
+  const all = activeStaff();
+  const groups = [['社員（バイヤー）', all.filter(s => s.role === 'buyer')], ...STORES.map(st => ['アルバイト・' + st, all.filter(s => s.role === 'part' && s.store === st)])];
+  const r = S.draft.regRole;
+  let html = `<div><div class="eyebrow">${dateLabel()}</div><h1>あなたの名前を選んでください</h1><div class="sub" style="margin-top:6px">この端末では次回から自動で開きます。</div></div>`;
+  if (all.length) html += groups.filter(g => g[1].length).map(([label, list]) => `<div class="panel"><h3>${label}</h3>
+    <div class="chips">${list.map(s => `<button class="chip" data-act="pickMe" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div></div>`).join('');
+  html += `<div class="panel"><h2>はじめての方は登録</h2>
+   <div class="form">
+    <div class="field"><label for="r-name">名前</label><input class="input" id="r-name" placeholder="例：山田 太郎" value="${esc(S.draft.regName)}" data-draft="regName"></div>
+    <div class="field"><label>区分</label><div class="seg"><button data-act="draftSet" data-k="regRole" data-v="buyer" aria-pressed="${r === 'buyer'}">社員（バイヤー）</button><button data-act="draftSet" data-k="regRole" data-v="part" aria-pressed="${r === 'part'}">アルバイト</button></div></div>
+    ${r === 'part' ? `<div class="field"><label>所属店舗</label><div class="seg">${STORES.map(x => `<button data-act="draftSet" data-k="regStore" data-v="${x}" aria-pressed="${S.draft.regStore === x}">${x}</button>`).join('')}</div></div>` : ''}
+   </div>
+   <div><button class="btn lg" data-act="register">登録してはじめる</button></div></div>`;
+  return html;
+}
+function viewPart(p, peek) {
+  const d = partDay(p.id), m = partMonth(p.id), a = attOf(p.id), wh = workHours(a);
+  const unassigned = Math.max(0, wh - d.logged);
+  let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}・アルバイト・${esc(p.store || '')}</div><h1>${esc(p.name)} さん</h1></div>${peek ? '' : `<button class="link" data-act="switchMe">名前を切り替える</button>`}</div>`;
+  html += `<div class="panel"><div class="hero">${ring(d.listed, d.target, '出品達成率')}
+    <div class="stats">
+      <div class="stat"><div class="k">出品数</div><div class="v num">${d.listed}<span class="sub"> / ${d.target}品</span></div></div>
+      <div class="stat"><div class="k">出品作業時間</div><div class="v num">${fmtH(d.by['出品'].hours)}</div></div>
+      <div class="stat"><div class="k">勤務時間（出勤記録）</div><div class="v num">${fmtH(wh)}</div></div>
+      <div class="stat"><div class="k">今月の出品達成率</div><div class="v num">${pctTxt(m.listed, m.target)}</div><div class="k num">${m.listed} / ${m.target}品</div></div>
+    </div></div>
+    <div class="notice">目標は「出品の作業時間 × ${PER_HOUR}品」で自動計算します。${a && a.in && unassigned >= .25 ? `勤務時間のうち <b class="num">${fmtH(unassigned)}</b> がまだ作業に振り分けられていません。` : ''}</div></div>`;
+  html += `<div class="grid2">${attendanceCard(p)}${taskForm(p)}</div>`;
+  html += `<div class="panel"><div class="titlerow"><h2>今日の作業</h2><span class="sub num">合計 ${fmtH(d.logged)}</span></div>
+    <div class="grid4 tight">${TASKS.map(t => `<div><div class="eyebrow">${t}</div><div class="stat"><div class="v num">${fmtH(d.by[t].hours)}</div><div class="k num">${d.by[t].count ? d.by[t].count + (t === '出品' ? '品' : '件') : '—'}</div></div></div>`).join('')}</div>
+    ${d.logs.length ? `<div class="list">${d.logs.map(l => `<div class="row">
+      <span class="sub num">${hmOf(l.createdAt)}</span><span class="pill ${l.task === '出品' ? 'u' : ''}">${esc(l.task)}</span>
+      <div class="grow num">${fmtH(Number(l.hours) || 0)}${Number(l.count) ? `・${l.count}${l.task === '出品' ? '品' : '件'}` : ''}${l.task === '出品' ? `<span class="sub">（目標 ${(Number(l.hours) || 0) * PER_HOUR}品）</span>` : ''}</div>
+      ${confirmBtn('log-' + l.id, 'delLog', '削除', '削除する', `data-id="${l.id}"`)}</div>`).join('')}</div>`
+      : `<div class="empty" style="padding:16px">まだ作業の記録がありません。「作業を記録」から追加してください。</div>`}</div>`;
+  return html;
+}
+function taskForm(p) {
+  const t = S.draft.task, h = Number(S.draft.hours) || 0;
+  const countLabel = {出品: '出品数（品）', 梱包: '梱包数（任意）', 発送: '発送数（任意）', 整理: '件数（任意）'}[t];
+  const hours = []; for (let x = .5; x <= 10; x += .5) hours.push(x);
+  return `<div class="panel"><h2>作業を記録</h2>
+    <div class="choice four">${TASKS.map(x => `<button data-act="task" data-v="${x}" aria-pressed="${t === x}"><b>${x}</b></button>`).join('')}</div>
+    <div class="form">
+      <div class="field"><label for="f-hours">作業時間</label><select class="input" id="f-hours" data-draft="hours">${hours.map(x => `<option value="${x}" ${h === x ? 'selected' : ''}>${x}時間</option>`).join('')}</select></div>
+      <div class="field"><label for="f-count">${countLabel}</label><input class="input num" id="f-count" type="number" inputmode="numeric" min="0" placeholder="${t === '出品' ? '例：' + h * PER_HOUR : '0'}" value="${esc(S.draft.count)}" data-draft="count"></div>
+    </div>
+    ${t === '出品' ? `<div class="notice">この時間の出品目標は <b class="num">${h * PER_HOUR}品</b> です。</div>` : ''}
+    <button class="btn" data-act="addLog" data-id="${p.id}">記録する</button></div>`;
+}
+function viewBuyer(p, peek) {
+  const d = buyerDay(p.id), m = buyerMonth(p.id);
+  let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}・社員（バイヤー）</div><h1>${esc(p.name)} さん</h1></div>${peek ? '' : `<button class="link" data-act="switchMe">名前を切り替える</button>`}</div>`;
+  html += `<div class="panel"><div class="hero">${ring(d.profit, d.target, '粗利達成率')}
+    <div class="stats">
+      <div class="stat"><div class="k">本日の粗利</div><div class="v num">${yen(d.profit)}</div></div>
+      <div class="stat"><div class="k">本日の目標</div><div class="v num">${yen(d.target)}</div><div class="k">アポ ${d.appos.length}件</div></div>
+      <div class="stat"><div class="k">目標まで</div><div class="v num">${d.target > d.profit ? yen(d.target - d.profit) : d.target ? '達成' : '—'}</div></div>
+      <div class="stat"><div class="k">今月の達成率</div><div class="v num">${pctTxt(m.profit, m.target)}</div><div class="k num">${yen(m.profit)} / ${yen(m.target)}</div></div>
+    </div></div></div>`;
+  html += `<div class="grid2">${attendanceCard(p)}${appoForm(p)}</div>`;
+  html += `<div class="panel"><div class="titlerow"><h2>今日のアポ</h2><span class="sub">査定が終わるたびに粗利を入力</span></div>
+    ${d.appos.length ? d.appos.map(appoCard).join('') : `<div class="empty" style="padding:16px">アポはまだありません。「アポを追加」から登録してください。</div>`}</div>`;
+  return html;
+}
+function appoForm(p) {
+  const t = S.draft.appoType;
+  return `<div class="panel"><h2>アポを追加</h2>
+    <div class="choice">${Object.keys(TYPE).map(k => `<button data-act="appoType" data-v="${k}" aria-pressed="${t === k}"><b>${TYPE[k].name}</b><span class="num">目標粗利 ${yen(TARGET[k])}／${TYPE[k].unit}</span></button>`).join('')}</div>
+    <div class="field"><label for="f-appo">案件名・場所（任意）</label><input class="input" id="f-appo" placeholder="${t === 'mansion' ? '例：〇〇マンション 集会室' : '例：〇〇様 宅'}" value="${esc(S.draft.appoTitle)}" data-draft="appoTitle"></div>
+    <button class="btn" data-act="addAppo" data-id="${p.id}">アポを追加</button></div>`;
+}
+function appoCard(a) {
+  const pr = appoProfit(a), T = TYPE[a.type] || TYPE.unisound;
+  return `<div class="appo">
+    <div class="appo-head"><span class="pill ${T.cls}">${T.name}</span><div class="grow">${esc(a.title || '（案件名なし）')}</div>
+      <span class="num"><b>${yen(pr)}</b><span class="sub"> / ${yen(a.target)}</span></span></div>
+    ${bar(pr, a.target)}
+    ${(a.profits || []).length ? `<div class="list">${a.profits.map(x => `<div class="row"><span class="sub num">${esc(x.at || '')}</span><div class="grow">${esc(x.note || '査定')}</div><span class="amt num">${yen(x.amount)}</span>
+      ${confirmBtn('pf-' + x.id, 'delProfit', '削除', '削除する', `data-id="${x.id}"`)}</div>`).join('')}</div>` : ''}
+    <div class="addline">
+      <input class="input num" id="pa-${a.id}" type="number" inputmode="numeric" placeholder="粗利（円）" aria-label="粗利（円）">
+      <input class="input" id="pn-${a.id}" placeholder="品目・メモ（任意）" aria-label="品目・メモ">
+      <button class="btn" data-act="addProfit" data-id="${a.id}">粗利を入力</button>
+    </div>
+    <div>${confirmBtn('ap-' + a.id, 'delAppo', 'アポを削除', 'もう一度押すとアポを削除します', `data-id="${a.id}"`)}</div>
+  </div>`;
+}
+
+/* ---------- admin ---------- */
+function viewAdmin() {
+  const tabs = [['now', '本日の動き'], ['perf', '実績'], ['att', '出勤管理'], ['staff', 'スタッフ']];
+  let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}</div><h1>管理マスター</h1></div>
+    <div class="seg">${tabs.map(([k, v]) => `<button data-act="adminTab" data-v="${k}" aria-pressed="${S.adminTab === k}">${v}</button>`).join('')}</div></div>`;
+  if (S.adminTab === 'staff') return html + adminStaff();
+  if (!activeStaff().length) return html + `<div class="panel"><div class="empty"><div class="big">まだスタッフが登録されていません</div><div>スタッフ用のリンクかQRコードを配ると、各自が最初に名前を登録します。</div><button class="btn" data-act="adminTab" data-v="staff">リンクとQRコードを見る</button></div></div>`;
+  if (S.adminTab === 'att') return html + adminAtt();
+  if (S.adminTab === 'perf') return html + adminPerf();
+  return html + adminNow();
+}
+function personCard(s) {
+  const a = attOf(s.id), st = attStatus(a), isToday = S.date === todayStr();
+  let nowHtml;
+  if (st === 'on' && a.now && a.now.label && isToday) nowHtml = `<div class="now">${esc(a.now.label)}<small>${esc(a.now.since || '')} から</small></div>`;
+  else {
+    let last = null;
+    if (s.role === 'buyer') { const ap = buyerDay(s.id).appos; const l = ap[ap.length - 1]; if (l) last = {t: 'アポ：' + (l.title || TYPE[l.type].name), sub: hmOf(l.createdAt) + ' に登録'}; }
+    else { const lg = partDay(s.id).logs; const l = lg[lg.length - 1]; if (l) last = {t: `${l.task} ${fmtH(Number(l.hours) || 0)}${Number(l.count) ? '・' + l.count + (l.task === '出品' ? '品' : '件') : ''}`, sub: hmOf(l.createdAt) + ' に記録'}; }
+    nowHtml = st === 'none' ? `<div class="now" style="color:var(--faint)">未出勤</div>`
+      : last ? `<div class="now" style="font-size:16px">${esc(last.t)}<small>最新の記録・${esc(last.sub)}</small></div>`
+      : `<div class="now" style="font-size:16px;color:var(--muted)">${st === 'done' ? '退勤済' : '状況未入力'}</div>`;
+  }
+  let prog;
+  if (s.role === 'buyer') { const d = buyerDay(s.id); prog = `<span>粗利 <b class="num" style="color:var(--fg)">${yen(d.profit)}</b> / ${yen(d.target)}</span><span class="num">${pctTxt(d.profit, d.target)}</span>${bar(d.profit, d.target)}<span>アポ ${d.appos.length}件</span>`; }
+  else { const d = partDay(s.id); prog = `<span>出品 <b class="num" style="color:var(--fg)">${d.listed}</b> / ${d.target}品</span><span class="num">${pctTxt(d.listed, d.target)}</span>${bar(d.listed, d.target)}<span class="num">作業記録 ${fmtH(d.logged)}</span>`; }
+  return `<div class="pcard ${st}" data-act="openPeek" data-id="${s.id}" role="button" tabindex="0" title="${esc(s.name)} さんの画面を開く">
+    <div class="top"><div class="nm">${esc(s.name)}</div>${statusPill(a)}</div>
+    <div class="meta num">${a && a.in ? `${esc(a.in)}〜${esc(a.out || '')}・実働 ${fmtH(workHours(a))}` : '出勤記録なし'}</div>
+    ${nowHtml}
+    <div class="prog">${prog}</div></div>`;
+}
+function adminNow() {
+  const all = activeStaff(), ord = {on: 0, done: 1, none: 2};
+  const sorted = list => [...list].sort((a, b) => ord[attStatus(attOf(a.id))] - ord[attStatus(attOf(b.id))]);
+  const groups = [['社員（バイヤー）', all.filter(s => s.role === 'buyer')], ...STORES.map(st => ['アルバイト・' + st, all.filter(s => s.role === 'part' && s.store === st)])];
+  const working = all.filter(s => attStatus(attOf(s.id)) === 'on').length;
+  const buyers = all.filter(s => s.role === 'buyer'), parts = all.filter(s => s.role === 'part');
+  const bT = buyers.reduce((x, s) => x + buyerDay(s.id).target, 0), bP = buyers.reduce((x, s) => x + buyerDay(s.id).profit, 0);
+  const pT = parts.reduce((x, s) => x + partDay(s.id).target, 0), pL = parts.reduce((x, s) => x + partDay(s.id).listed, 0);
+  let html = `<div class="grid4">
+    <div class="kpi"><div><div class="k">${S.date === todayStr() ? '<span class="livedot"></span>いま勤務中' : 'この日の出勤'}</div><div class="v num">${S.date === todayStr() ? working : all.filter(s => attStatus(attOf(s.id)) !== 'none').length}<span class="sub"> / ${all.length}人</span></div><div class="k">${S.demo ? 'デモモード' : 'リアルタイム更新'}</div></div></div>
+    <div class="kpi">${ring(bP, bT, '', true)}<div><div class="k">バイヤー粗利</div><div class="v num">${yen(bP)}</div><div class="k num">目標 ${yen(bT)}</div></div></div>
+    <div class="kpi">${ring(pL, pT, '', true)}<div><div class="k">アルバイト出品</div><div class="v num">${pL}品</div><div class="k num">目標 ${pT}品</div></div></div>
+  </div>`;
+  groups.forEach(([label, list]) => {
+    if (!list.length) return;
+    const on = list.filter(s => attStatus(attOf(s.id)) === 'on').length;
+    html += `<div class="grouphead"><h2>${label}</h2><span class="sub num">勤務中 ${on} / ${list.length}人</span></div>
+      <div class="board">${sorted(list).map(personCard).join('')}</div>`;
+  });
+  return html;
+}
+function adminPerf() {
+  const all = activeStaff(), buyers = all.filter(s => s.role === 'buyer'), parts = all.filter(s => s.role === 'part');
+  let html = `<div class="panel"><div class="titlerow"><h2>バイヤー</h2><span class="sub">UNISOUND ${yen(TARGET.unisound)}/件・マンション買取 ${yen(TARGET.mansion)}/人</span></div>
+   ${buyers.length ? `<div class="tbl"><table><thead><tr><th>名前</th><th>本日のアポ</th><th class="r">本日粗利</th><th class="r">本日目標</th><th>達成率</th><th class="r">今月粗利</th><th class="r">今月目標</th><th>今月達成率</th></tr></thead><tbody>
+   ${buyers.map(b => { const d = buyerDay(b.id), m = buyerMonth(b.id);
+     const u = d.appos.filter(a => a.type === 'unisound').length, mm = d.appos.filter(a => a.type === 'mansion').length;
+     return `<tr><td><b>${esc(b.name)}</b></td>
+     <td>${u ? `<span class="pill u">UNISOUND ${u}</span> ` : ''}${mm ? `<span class="pill m">マンション ${mm}</span>` : ''}${!u && !mm ? '<span class="sub">—</span>' : ''}</td>
+     <td class="r num">${yen(d.profit)}</td><td class="r num">${yen(d.target)}</td><td class="num">${bar(d.profit, d.target)}${pctTxt(d.profit, d.target)}</td>
+     <td class="r num">${yen(m.profit)}</td><td class="r num">${yen(m.target)}</td><td class="num">${bar(m.profit, m.target)}${pctTxt(m.profit, m.target)}</td></tr>`; }).join('')}
+   </tbody></table></div>` : '<div class="sub">バイヤーはまだ登録されていません。</div>'}</div>`;
+  html += `<div class="grid2">${STORES.map(st => {
+    const rows = parts.filter(p => p.store === st);
+    const T = rows.reduce((s, p) => s + partDay(p.id).target, 0), L = rows.reduce((s, p) => s + partDay(p.id).listed, 0);
+    return `<div class="panel"><div class="titlerow"><h2>アルバイト・${st}</h2><span class="sub num">本日 ${L} / ${T}品（${pctTxt(L, T)}）</span></div>
+    ${rows.length ? `<div class="tbl"><table style="min-width:520px"><thead><tr><th>名前</th><th class="r">勤務</th><th>出品（数/目標）</th><th class="r">梱包</th><th class="r">発送</th><th class="r">整理</th><th class="r">今月</th></tr></thead><tbody>
+    ${rows.map(p => { const d = partDay(p.id), m = partMonth(p.id); const h = t => d.by[t].hours ? fmtH(d.by[t].hours) : '—';
+      return `<tr><td><b>${esc(p.name)}</b></td><td class="r num">${fmtH(workHours(attOf(p.id)))}</td>
+      <td class="num">${bar(d.listed, d.target)}${d.listed}/${d.target}</td><td class="r num">${h('梱包')}</td><td class="r num">${h('発送')}</td><td class="r num">${h('整理')}</td>
+      <td class="r num">${pctTxt(m.listed, m.target)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="sub">この店舗のアルバイトはいません。</div>'}</div>`;
+  }).join('')}</div>`;
+  return html;
+}
+function adminAtt() {
+  const all = activeStaff(), [y, mo] = S.date.split('-');
+  let html = `<div class="panel"><div class="titlerow"><h2>${dateLabel()}の出勤</h2><span class="sub">時刻はその場で修正できます</span></div>
+  <div class="tbl"><table><thead><tr><th>名前</th><th>区分</th><th>状態</th><th>出勤</th><th>退勤</th><th>休憩</th><th class="r">実働</th><th></th></tr></thead><tbody>
+  ${all.map(s => { const a = attOf(s.id); return `<tr><td><b>${esc(s.name)}</b></td><td class="sub">${roleLbl(s)}</td><td>${statusPill(a)}</td>
+    ${a && a.in ? `<td><input class="input num" type="time" id="ain-${s.id}" value="${esc(a.in)}" data-chg="att" data-id="${s.id}" data-f="in" aria-label="出勤時刻"></td>
+    <td><input class="input num" type="time" id="aout-${s.id}" value="${esc(a.out || '')}" data-chg="att" data-id="${s.id}" data-f="out" aria-label="退勤時刻"></td>
+    <td><select class="input" id="abr-${s.id}" data-chg="att" data-id="${s.id}" data-f="breakMin" aria-label="休憩">${BREAKS.map(m => `<option value="${m}" ${Number(a.breakMin || 0) === m ? 'selected' : ''}>${m}分</option>`).join('')}</select></td>
+    <td class="r num">${fmtH(workHours(a))}</td><td></td>`
+    : `<td class="sub">—</td><td class="sub">—</td><td class="sub">—</td><td class="r sub">—</td><td><button class="link" data-act="clockIn" data-id="${s.id}">出勤を記録</button></td>`}</tr>`; }).join('')}
+  </tbody></table></div></div>`;
+  html += `<div class="panel"><div class="titlerow"><h2>${Number(mo)}月の勤怠集計</h2><span class="sub">${y}年${Number(mo)}月</span></div>
+  <div class="tbl"><table style="min-width:420px"><thead><tr><th>名前</th><th>区分</th><th class="r">出勤日数</th><th class="r">総実働</th><th class="r">平均実働</th></tr></thead><tbody>
+  ${all.map(s => { const m = monthAtt(s.id); return `<tr><td><b>${esc(s.name)}</b></td><td class="sub">${roleLbl(s)}</td><td class="r num">${m.days}日</td><td class="r num">${fmtH(m.hours)}</td><td class="r num">${m.days ? fmtH(m.hours / m.days) : '—'}</td></tr>`; }).join('')}
+  </tbody></table></div></div>`;
+  return html;
+}
+function adminStaff() {
+  const act = activeStaff(), off = S.staff.filter(s => s.active === false), r = S.draft.addRole;
+  let html = `<div class="grid2"><div class="panel"><h2>スタッフ用のリンク</h2>
+    <div class="sub">このリンクかQRコードをスタッフに配ってください。開いた人は名前を選ぶだけで使えます（ログイン・PIN不要）。</div>
+    <div class="copyrow"><input class="input" id="u-staff" readonly value="${esc(S.url)}"><button class="btn ghost" data-act="copy" data-target="u-staff">コピー</button></div>
+    <div id="qr" class="qr" aria-label="スタッフ用リンクのQRコード"></div></div>
+   <div class="panel"><h2>管理者用のリンク</h2>
+    <div class="sub">全員の記録が見られる管理マスターを開くリンクです。スタッフには渡さないでください。</div>
+    <div class="copyrow"><input class="input" id="u-admin" readonly value="${esc(S.url + '?admin=' + S.key)}"><button class="btn ghost" data-act="copy" data-target="u-admin">コピー</button></div></div></div>`;
+  html += `<div class="panel"><h2>スタッフを追加</h2>
+   <div class="form">
+    <div class="field"><label for="a-name">名前</label><input class="input" id="a-name" placeholder="例：山田 太郎" value="${esc(S.draft.addName)}" data-draft="addName"></div>
+    <div class="field"><label>区分</label><div class="seg"><button data-act="draftSet" data-k="addRole" data-v="buyer" aria-pressed="${r === 'buyer'}">社員（バイヤー）</button><button data-act="draftSet" data-k="addRole" data-v="part" aria-pressed="${r === 'part'}">アルバイト</button></div></div>
+    ${r === 'part' ? `<div class="field"><label>所属店舗</label><div class="seg">${STORES.map(x => `<button data-act="draftSet" data-k="addStore" data-v="${x}" aria-pressed="${S.draft.addStore === x}">${x}</button>`).join('')}</div></div>` : ''}
+   </div><div><button class="btn" data-act="addStaff">追加する</button></div></div>`;
+  html += `<div class="panel"><div class="titlerow"><h2>登録スタッフ</h2><span class="sub num">${act.length}人</span></div>
+   ${act.length ? `<div class="list">${act.map(s => `<div class="row" style="flex-wrap:wrap">
+     <div class="grow"><b>${esc(s.name)}</b></div>
+     <select class="input" style="width:auto" id="sr-${s.id}" data-chg="staffRole" data-id="${s.id}" aria-label="区分"><option value="buyer" ${s.role === 'buyer' ? 'selected' : ''}>社員（バイヤー）</option><option value="part" ${s.role === 'part' ? 'selected' : ''}>アルバイト</option></select>
+     ${s.role === 'part' ? `<select class="input" style="width:auto" id="ss-${s.id}" data-chg="staffStore" data-id="${s.id}" aria-label="店舗">${STORES.map(x => `<option ${s.store === x ? 'selected' : ''}>${x}</option>`).join('')}</select>` : ''}
+     ${confirmBtn('st-' + s.id, 'offStaff', '利用停止', 'もう一度押すと利用停止します', `data-id="${s.id}"`)}</div>`).join('')}</div>`
+     : `<div class="empty" style="padding:16px">まだ誰も登録していません。</div>`}</div>`;
+  if (off.length) html += `<div class="panel"><h2>利用停止中</h2><div class="list">${off.map(s => `<div class="row"><div class="grow">${esc(s.name)} <span class="sub">${roleLbl(s)}</span></div><button class="link" data-act="onStaff" data-id="${s.id}">再開する</button></div>`).join('')}</div>
+    <div class="notice">利用停止した人は名前の一覧に出なくなります。過去の記録は残ります。</div></div>`;
+  return html;
+}
+function viewPeek() {
+  const all = activeStaff();
+  let html = `<div><div class="eyebrow">${dateLabel()}</div><h1>スタッフ画面</h1><div class="sub" style="margin-top:6px">スタッフが見ている画面をそのまま開きます。代わりに入力することもできます。</div></div>`;
+  if (!all.length) return html + `<div class="panel"><div class="empty">まだスタッフが登録されていません。</div></div>`;
+  html += `<div class="chips">${all.map(s => `<button class="chip" data-act="peekPick" data-id="${s.id}" aria-pressed="${S.peek === s.id}">${esc(s.name)}</button>`).join('')}</div>`;
+  const p = all.find(s => s.id === S.peek);
+  return html + (p ? staffPage(p, true) : `<div class="panel"><div class="empty">名前を選ぶと、その人の画面が開きます。</div></div>`);
+}
+
+/* ---------- render ---------- */
+function render() {
+  document.getElementById('date').value = S.date;
+  document.getElementById('navwrap').hidden = !S.isAdmin;
+  document.querySelectorAll('#nav button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v === S.view));
+  const me = S.staff.find(s => s.id === S.staffId && s.active !== false);
+  document.getElementById('whoami').textContent = S.isAdmin ? '管理者' : me ? me.name + ' さん' : 'BUYER & STAFF';
+  const app = document.getElementById('app');
+  if (S.status === 'loading') return;
+  if (S.status === 'error') { app.innerHTML = `<div class="panel"><div class="empty"><div class="big">読み込めませんでした</div><div>通信を確認して、ページを再読み込みしてください。</div><button class="btn" data-act="retry">再読み込み</button></div></div>`; return; }
+  const focus = document.activeElement && document.activeElement.id;
+  const vals = {}; app.querySelectorAll('input[id]:not([data-chg]):not([data-draft])').forEach(el => vals[el.id] = el.value);
+  const banner = S.demo ? `<div class="notice">デモモードです。記録はこの端末のブラウザにだけ保存されます。</div>` : '';
+  if (S.isAdmin) app.innerHTML = banner + (S.view === 'peek' ? viewPeek() : viewAdmin());
+  else app.innerHTML = banner + (me ? staffPage(me, false) : pickView());
+  for (const id in vals) { const el = document.getElementById(id); if (el && !el.readOnly) el.value = vals[id]; }
+  if (focus) { const el = document.getElementById(focus); if (el) el.focus(); }
+  const qr = document.getElementById('qr');
+  if (qr && window.QRCode && S.url) { try { new QRCode(qr, {text: S.url, width: 176, height: 176, correctLevel: QRCode.CorrectLevel.M}); } catch (e) {} }
+}
+
+/* ---------- events ---------- */
+const actorId = () => S.isAdmin ? S.peek : S.staffId;
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act, id = b.dataset.id;
+  if (act !== 'ask' && !/^(del|off)/.test(act)) S.confirm = null;
+  const d = S.date, isToday = d === todayStr();
+  switch (act) {
+    case 'view': S.view = b.dataset.v; window.scrollTo(0, 0); break;
+    case 'day': { const dt = new Date(S.date + 'T00:00'); dt.setDate(dt.getDate() + Number(b.dataset.d)); setDate(ymd(dt)); return; }
+    case 'today': setDate(todayStr()); return;
+    case 'retry': S.status = 'loading'; render(); reload(); return;
+    case 'task': S.draft.task = b.dataset.v; S.draft.count = ''; break;
+    case 'appoType': S.draft.appoType = b.dataset.v; break;
+    case 'draftSet': S.draft[b.dataset.k] = b.dataset.v; break;
+    case 'adminTab': S.adminTab = b.dataset.v; store.set('adminTab', S.adminTab); break;
+    case 'ask': S.confirm = b.dataset.k; break;
+    case 'pickMe': S.staffId = id; store.set('me', id); reload(); window.scrollTo(0, 0); break;
+    case 'switchMe': S.staffId = ''; store.set('me', ''); reload(); break;
+    case 'peekPick': S.peek = id; store.set('peek', id); break;
+    case 'openPeek': S.peek = id; store.set('peek', id); S.view = 'peek'; window.scrollTo(0, 0); break;
+    case 'copy': {
+      const el = document.getElementById(b.dataset.target);
+      const fallback = () => { el.focus(); el.select(); toast('選択しました。コピーしてください'); };
+      try { navigator.clipboard.writeText(el.value).then(() => toast('コピーしました'), fallback); } catch (err) { fallback(); }
+      return;
+    }
+    case 'register': {
+      const name = S.draft.regName.trim(); if (!name) { toast('名前を入力してください'); document.getElementById('r-name')?.focus(); return; }
+      call('register', {name, role: S.draft.regRole, store: S.draft.regStore}).then(data => {
+        if (data && data.result && data.result.staffId) { S.staffId = data.result.staffId; store.set('me', S.staffId); S.draft.regName = ''; toast(`${name} さん、登録しました`); reload(); }
+      });
+      return;
+    }
+    case 'addStaff': {
+      const name = S.draft.addName.trim(); if (!name) { toast('名前を入力してください'); document.getElementById('a-name')?.focus(); return; }
+      call('register', {name, role: S.draft.addRole, store: S.draft.addStore}, `${name} さんを追加しました`);
+      S.draft.addName = ''; break;
+    }
+    case 'clockIn': { const t = isToday ? nowHM() : '09:00'; call('clockIn', {staffId: id, date: d, time: t}, `出勤 ${t}`); return; }
+    case 'clockOut': { const t = isToday ? nowHM() : '18:00'; call('clockOut', {staffId: id, date: d, time: t}, `退勤 ${t}・お疲れさまでした`); return; }
+    case 'setNow': {
+      const a = attOf(id); if (!a) return;
+      const v = b.dataset.v, clear = a.now && a.now.label === v;
+      a.now = clear ? null : {label: v, since: nowHM()}; render();
+      call('setNow', {staffId: id, date: d, label: clear ? '' : v, since: nowHM()}, clear ? '状況をクリアしました' : `「${v}」にしました`);
+      return;
+    }
+    case 'delAtt': S.confirm = null; call('delAtt', {staffId: id, date: d}, '出勤記録を取り消しました'); break;
+    case 'addLog': {
+      const hours = Number(S.draft.hours) || 0, count = Math.max(0, Math.round(Number(S.draft.count) || 0));
+      call('addLog', {staffId: id, date: d, task: S.draft.task, hours, count}, `${S.draft.task} ${hours}時間を記録しました`);
+      S.draft.count = ''; break;
+    }
+    case 'delLog': S.confirm = null; call('delLog', {id}, '削除しました'); break;
+    case 'addAppo': call('addAppo', {staffId: id, date: d, type: S.draft.appoType, title: S.draft.appoTitle.trim()}, `${TYPE[S.draft.appoType].name} のアポを追加しました`); S.draft.appoTitle = ''; break;
+    case 'addProfit': {
+      const amtEl = document.getElementById('pa-' + id), noteEl = document.getElementById('pn-' + id);
+      const raw = (amtEl.value || '').trim();
+      if (raw === '' || isNaN(Number(raw))) { toast('粗利の金額を入力してください'); amtEl.focus(); return; }
+      const amount = Math.round(Number(raw));
+      call('addProfit', {appoId: id, amount, note: noteEl.value.trim(), at: isToday ? nowHM() : ''}, `粗利 ${yen(amount)} を入力しました`);
+      amtEl.value = ''; noteEl.value = ''; return;
+    }
+    case 'delProfit': S.confirm = null; call('delProfit', {id}, '削除しました'); break;
+    case 'delAppo': S.confirm = null; call('delAppo', {id}, 'アポを削除しました'); break;
+    case 'offStaff': S.confirm = null; call('updateStaff', {id, active: false}, '利用停止にしました'); break;
+    case 'onStaff': call('updateStaff', {id, active: true}, '利用を再開しました'); break;
+  }
+  render();
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList && e.target.classList.contains('pcard')) { e.preventDefault(); e.target.click(); return; }
+  if (e.key !== 'Enter' || !e.target.id) return;
+  const m = e.target.id.match(/^p[an]-(.+)$/); if (m) { e.preventDefault(); document.querySelector(`[data-act="addProfit"][data-id="${m[1]}"]`)?.click(); }
+  if (e.target.id === 'r-name') { e.preventDefault(); document.querySelector('[data-act="register"]')?.click(); }
+  if (e.target.id === 'a-name') { e.preventDefault(); document.querySelector('[data-act="addStaff"]')?.click(); }
+});
+document.addEventListener('input', e => { const k = e.target.dataset && e.target.dataset.draft; if (k) S.draft[k] = e.target.value; });
+document.addEventListener('change', e => {
+  const el = e.target, k = el.dataset && el.dataset.draft;
+  if (k) { S.draft[k] = el.value; if (k === 'hours') render(); return; }
+  if (el.id === 'date') { if (el.value) setDate(el.value); return; }
+  const c = el.dataset && el.dataset.chg; if (!c) return;
+  const id = el.dataset.id;
+  if (c === 'att') {
+    const f = el.dataset.f;
+    if (f === 'in' && !el.value) { toast('出勤時刻は空にできません'); render(); return; }
+    call('setAtt', {staffId: id, date: S.date, field: f, value: f === 'breakMin' ? Number(el.value) : el.value}, '勤怠を更新しました');
+  } else if (c === 'staffRole') {
+    const s = S.staff.find(x => x.id === id);
+    call('updateStaff', {id, role: el.value, store: (s && s.store) || '相模原'}, '区分を変更しました');
+  } else if (c === 'staffStore') {
+    call('updateStaff', {id, store: el.value}, '店舗を変更しました');
+  }
+});
+function setDate(dt) {
+  const changed = month(dt) !== S.loadedMonth;
+  S.date = dt; S.confirm = null; render();
+  if (changed) reload();
+}
+
+/* ---------- start ---------- */
+let rt;
+(async () => {
+  S.demo = !(CFG.supabaseUrl && CFG.supabaseAnonKey && window.supabase);
+  db = S.demo ? localDb() : supabaseDb();
+  const given = params.get('admin') || '';
+  if (given && ((S.demo && given === 'demo') || (CFG.adminKeyHash && await sha256(given) === CFG.adminKeyHash))) { S.isAdmin = true; S.key = given; S.view = 'admin'; }
+  render();
+  await reload();
+  db.subscribe(() => { clearTimeout(rt); rt = setTimeout(() => { if (!S.busy) reload(); }, 400); });
+  setInterval(() => { if (S.status === 'ready' && !S.busy && !document.hidden && !(document.activeElement && document.activeElement.matches('input,select'))) reload(); }, 60000);
+})();
+})();
+</script>
+</body>
+</html>
