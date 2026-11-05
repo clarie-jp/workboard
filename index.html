@@ -281,7 +281,7 @@ const CARD_ID = (new URLSearchParams(location.search).get('s') || '').slice(0, 6
 const S = {
   isAdmin: false, key: '', url: location.origin + location.pathname, demo: false,
   status: 'loading', card: CARD_ID, staffId: CARD_ID || store.get('me', ''), peek: store.get('peek', ''), cardsFor: '',
-  staff: [], att: [], logs: [], appos: [], tasks: [], migrate: false,
+  staff: [], att: [], logs: [], appos: [], tasks: [], listing: [], listingAt: 0, migrate: false,
   session: false, pin: null, remember: false, lastAct: Date.now(), reminded: '',
   date: todayStr(), view: 'me', adminTab: store.get('adminTab', 'now'),
   draft: {task: '出品', hours: '1', count: '', appoType: 'unisound', appoTitle: '', regName: '', regRole: 'part', regStore: '相模原', regOther: '', addName: '', addRole: 'part', addStore: '相模原', addOther: '', taskTitle: '', taskNote: '', taskDue: todayStr(), taskTime: ''},
@@ -307,7 +307,7 @@ function supabaseDb() {
     async insertIgnore(t, row) { chk(await c.from(t).upsert(row, {onConflict: 'id', ignoreDuplicates: true})); },
     async update(t, id, p) { chk(await c.from(t).update(p).eq('id', id)); },
     async remove(t, id) { chk(await c.from(t).delete().eq('id', id)); },
-    subscribe(cb) { const ch = c.channel('workboard'); TABLES.slice(0, 5).forEach(t => ch.on('postgres_changes', {event: '*', schema: 'public', table: t}, cb)); ch.subscribe(); try { c.channel('workboard-tasks').on('postgres_changes', {event: '*', schema: 'public', table: 'tasks'}, cb).subscribe(); } catch (e) {} }
+    subscribe(cb) { const ch = c.channel('workboard'); TABLES.slice(0, 5).forEach(t => ch.on('postgres_changes', {event: '*', schema: 'public', table: t}, cb)); ch.subscribe(); try { c.channel('workboard-tasks').on('postgres_changes', {event: '*', schema: 'public', table: 'tasks'}, cb).on('postgres_changes', {event: '*', schema: 'public', table: 'listing_counts'}, cb).subscribe(); } catch (e) {} }
   };
 }
 function localDb() {
@@ -331,11 +331,15 @@ async function loadData() {
   const [staff, att, logs, appos, profits] = await Promise.all([db.select('staff', {}), db.select('attendance', f), db.select('logs', f), db.select('appos', f), db.select('profits', f)]);
   let tasks = [], migrate = !S.demo && staff.length > 0 && !('pin_hash' in staff[0]);
   try { tasks = await db.select('tasks', S.isAdmin ? {} : {staff_id: S.staffId || ZERO}); } catch (e) { migrate = true; }
+  let listing = [];
+  try { listing = await db.select('listing_counts', {month: m}); } catch (e) { if (!S.demo) migrate = true; }
+  if (!S.demo && staff.length > 0 && !('listing_code' in staff[0])) migrate = true;
   S.migrate = migrate;
   return {
     month: m,
-    staff: staff.map(s => ({id: s.id, name: s.name, role: s.role, store: s.store || '', active: s.active !== false, pinHash: s.pin_hash || '', createdAt: Number(s.created_at) || 0})),
+    staff: staff.map(s => ({id: s.id, name: s.name, role: s.role, store: s.store || '', active: s.active !== false, pinHash: s.pin_hash || '', listingCode: s.listing_code || '', createdAt: Number(s.created_at) || 0})),
     att: att.map(a => ({id: a.id, staffId: a.staff_id, date: a.date, in: a.clock_in || '', out: a.clock_out || '', breakMin: Number(a.break_min) || 0, nowLabel: a.now_label || '', nowSince: a.now_since || '', place: a.place || ''})),
+    listing: listing.map(r => ({code: r.code, store: r.store, date: r.date, count: Number(r.count) || 0, updatedAt: Number(r.updated_at) || 0})),
     tasks: tasks.map(t => ({id: t.id, staffId: t.staff_id, title: t.title || '', note: t.note || '', dueDate: t.due_date || '', dueTime: t.due_time || '', done: !!t.done, doneAt: Number(t.done_at) || 0, createdAt: Number(t.created_at) || 0})),
     logs: logs.map(l => ({id: l.id, staffId: l.staff_id, date: l.date, task: l.task, hours: Number(l.hours) || 0, count: Number(l.count) || 0, createdAt: Number(l.created_at) || 0})),
     appos: appos.map(a => ({id: a.id, staffId: a.staff_id, date: a.date, type: a.type, title: a.title || '', target: Number(a.target) || 0, createdAt: Number(a.created_at) || 0,
@@ -343,6 +347,7 @@ async function loadData() {
   };
 }
 const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, n || 80);
+const normCode = c => String(c || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 const normRole = r => ['buyer', 'office', 'part'].includes(r) ? r : 'part';
 const normStore = (role, st) => role === 'part' ? (STORES.includes(st) ? st : STORES[0]) : role === 'office' ? (clean(st, 30) || '本社') : '';
 async function exec(action, a) {
@@ -372,6 +377,7 @@ async function exec(action, a) {
     case 'setPlace': return db.update('attendance', attId(a.staffId, a.date), {place: clean(a.place, 30), updated_at: now});
     case 'setPin': { if (!/^\d{4}$/.test(a.pin)) throw new Error('4桁の数字にしてください'); return db.update('staff', a.id, {pin_hash: await sha256(a.id + ':' + a.pin)}); }
     case 'resetPin': return db.update('staff', a.id, {pin_hash: ''});
+    case 'setListingCode': return db.update('staff', a.id, {listing_code: normCode(a.code)});
     case 'addTask': {
       const title = clean(a.title, 100); if (!title) throw new Error('タスクの内容を入力してください');
       return db.insert('tasks', {id: uid(), staff_id: a.staffId, title, note: clean(a.note, 300), due_date: /^\d{4}-\d{2}-\d{2}$/.test(a.dueDate || '') ? a.dueDate : null, due_time: /^\d{2}:\d{2}$/.test(a.dueTime || '') ? a.dueTime : '', done: false, done_at: null, created_at: now});
@@ -409,7 +415,7 @@ async function exec(action, a) {
 function apply(data) {
   S.staff = data.staff || [];
   S.att = (data.att || []).map(a => Object.assign(a, {now: a.nowLabel ? {label: a.nowLabel, since: a.nowSince} : null}));
-  S.logs = data.logs || []; S.appos = data.appos || []; S.tasks = data.tasks || [];
+  S.logs = data.logs || []; S.appos = data.appos || []; S.tasks = data.tasks || []; S.listing = data.listing || []; S.listingAt = S.listing.reduce((x, r) => Math.max(x, r.updatedAt), 0);
   S.loadedMonth = data.month; S.status = 'ready';
 }
 const errText = e => (e && e.message && /[ぁ-んァ-ン一-龥]/.test(e.message)) ? e.message : '保存できませんでした。通信を確認してもう一度お試しください';
@@ -447,11 +453,23 @@ function partDay(id, date = S.date) {
   const logs = S.logs.filter(l => l.staffId === id && l.date === date).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const by = {}; TASKS.forEach(t => by[t] = {hours: 0, count: 0});
   logs.forEach(l => { if (by[l.task]) { by[l.task].hours += Number(l.hours) || 0; by[l.task].count += Number(l.count) || 0; } });
-  return {logs, by, target: by['出品'].hours * PER_HOUR, listed: by['出品'].count, logged: logs.reduce((s, l) => s + (Number(l.hours) || 0), 0)};
+  const auto = autoListed(id, d => d === date);
+  const target = auto !== null && !by['出品'].hours ? Math.floor(workHours(attOf(id, date)) * PER_HOUR) : by['出品'].hours * PER_HOUR;
+  return {logs, by, target, targetByWork: auto !== null && !by['出品'].hours, listed: auto === null ? by['出品'].count : auto, auto: auto !== null, logged: logs.reduce((s, l) => s + (Number(l.hours) || 0), 0)};
+}
+function autoListed(id, dateOk) {
+  const st = S.staff.find(x => x.id === id);
+  if (!st || !st.listingCode) return null;
+  return S.listing.filter(r => r.code === st.listingCode && dateOk(r.date)).reduce((x, r) => x + r.count, 0);
 }
 function partMonth(id) {
   const logs = S.logs.filter(l => l.staffId === id && l.task === '出品');
-  return {target: logs.reduce((s, l) => s + (Number(l.hours) || 0), 0) * PER_HOUR, listed: logs.reduce((s, l) => s + (Number(l.count) || 0), 0)};
+  const auto = autoListed(id, d => d.slice(0, 7) === month(S.date));
+  if (auto !== null) {
+    const days = [...new Set([...S.att.filter(a => a.staffId === id && a.in).map(a => a.date), ...logs.map(l => l.date)])];
+    return {target: days.reduce((x, dt) => x + partDay(id, dt).target, 0), listed: auto};
+  }
+  return {target: logs.reduce((s, l) => s + (Number(l.hours) || 0), 0) * PER_HOUR, listed: auto === null ? logs.reduce((s, l) => s + (Number(l.count) || 0), 0) : auto};
 }
 const appoProfit = a => (a.profits || []).reduce((s, p) => s + (Number(p.amount) || 0), 0);
 function buyerDay(id, date = S.date) {
@@ -586,6 +604,11 @@ function viewOffice(p, peek) {
       <div class="stat"><div class="k">今後7日の予定</div><div class="v num">${T.week}件</div></div>
       <div class="stat"><div class="k">今月の完了</div><div class="v num">${T.doneMonth}件</div></div>
     </div></div></div>`;
+  if (p.listingCode) {
+    const lt = autoListed(p.id, x => x === S.date), lm = autoListed(p.id, x => x.slice(0, 7) === month(S.date));
+    html += `<div class="panel"><div class="titlerow"><h2>出品数</h2><span class="sub">出品表の担当コード ${esc(p.listingCode)} から自動集計${S.listingAt ? `・最終反映 ${hmOf(S.listingAt)}` : ''}</span></div>
+      <div class="stats"><div class="stat"><div class="k">本日の出品</div><div class="v num">${lt}品</div></div><div class="stat"><div class="k">今月の出品</div><div class="v num">${lm}品</div></div></div></div>`;
+  }
   html += `<div class="grid2">${attendanceCard(p)}${taskAddForm(p)}</div>`;
   html += `<div class="panel"><div class="titlerow"><h2>タスク一覧</h2><span class="sub">完了したら丸を押す</span></div>${taskList(T, true)}</div>`;
   return html;
@@ -658,7 +681,7 @@ function viewPart(p, peek) {
       <div class="stat"><div class="k">勤務時間（出勤記録）</div><div class="v num">${fmtH(wh)}</div></div>
       <div class="stat"><div class="k">今月の出品達成率</div><div class="v num">${pctTxt(m.listed, m.target)}</div><div class="k num">${m.listed} / ${m.target}品</div></div>
     </div></div>
-    <div class="notice">目標は「出品の作業時間 × ${PER_HOUR}品」で自動計算します。${a && a.in && unassigned >= .25 ? `勤務時間のうち <b class="num">${fmtH(unassigned)}</b> がまだ作業に振り分けられていません。` : ''}</div></div>`;
+    <div class="notice">${d.auto ? `出品数は出品表の担当コード <b>${esc(p.listingCode)}</b> から自動集計しています${S.listingAt ? `（最終反映 ${hmOf(S.listingAt)}）` : ''}。` : ''}目標は${d.targetByWork ? '「勤務時間 × ' + PER_HOUR + '品」（出品の作業時間を記録するとそちらで計算）' : '「出品の作業時間 × ' + PER_HOUR + '品」'}で自動計算します。${a && a.in && unassigned >= .25 ? `勤務時間のうち <b class="num">${fmtH(unassigned)}</b> がまだ作業に振り分けられていません。` : ''}</div></div>`;
   html += `<div class="grid2">${attendanceCard(p)}${taskForm(p)}</div>`;
   html += `<div class="panel"><div class="titlerow"><h2>今日の作業</h2><span class="sub num">合計 ${fmtH(d.logged)}</span></div>
     <div class="grid4 tight">${TASKS.map(t => `<div><div class="eyebrow">${t}</div><div class="stat"><div class="v num">${fmtH(d.by[t].hours)}</div><div class="k num">${d.by[t].count ? d.by[t].count + (t === '出品' ? '品' : '件') : '—'}</div></div></div>`).join('')}</div>
@@ -671,15 +694,16 @@ function viewPart(p, peek) {
 }
 function taskForm(p) {
   const t = S.draft.task, h = Number(S.draft.hours) || 0;
+  const auto = t === '出品' && !!p.listingCode;
   const countLabel = {出品: '出品数（品）', 梱包: '梱包数（任意）', 発送: '発送数（任意）', 整理: '件数（任意）'}[t];
   const hours = []; for (let x = .5; x <= 10; x += .5) hours.push(x);
   return `<div class="panel"><h2>作業を記録</h2>
     <div class="choice four">${TASKS.map(x => `<button data-act="task" data-v="${x}" aria-pressed="${t === x}"><b>${x}</b></button>`).join('')}</div>
     <div class="form">
       <div class="field"><label for="f-hours">作業時間</label><select class="input" id="f-hours" data-draft="hours">${hours.map(x => `<option value="${x}" ${h === x ? 'selected' : ''}>${x}時間</option>`).join('')}</select></div>
-      <div class="field"><label for="f-count">${countLabel}</label><input class="input num" id="f-count" type="number" inputmode="numeric" min="0" placeholder="${t === '出品' ? '例：' + h * PER_HOUR : '0'}" value="${esc(S.draft.count)}" data-draft="count"></div>
+      ${auto ? '' : `<div class="field"><label for="f-count">${countLabel}</label><input class="input num" id="f-count" type="number" inputmode="numeric" min="0" placeholder="${t === '出品' ? '例：' + h * PER_HOUR : '0'}" value="${esc(S.draft.count)}" data-draft="count"></div>`}
     </div>
-    ${t === '出品' ? `<div class="notice">この時間の出品目標は <b class="num">${h * PER_HOUR}品</b> です。</div>` : ''}
+    ${t === '出品' ? `<div class="notice">この時間の出品目標は <b class="num">${h * PER_HOUR}品</b> です。${auto ? `出品数は出品表（担当コード <b>${esc(p.listingCode)}</b>）から自動で反映されるので、作業時間だけ記録してください。` : ''}</div>` : ''}
     <button class="btn" data-act="addLog" data-id="${p.id}">記録する</button></div>`;
 }
 function viewBuyer(p, peek) {
@@ -726,7 +750,7 @@ function viewAdmin() {
   const tabs = [['now', '本日の動き'], ['tasks', 'タスク'], ['perf', '実績'], ['att', '出勤管理'], ['staff', 'スタッフ']];
   let html = `<div class="titlerow"><div><div class="eyebrow">${dateLabel()}</div><h1>管理マスター</h1></div>
     <div class="seg">${tabs.map(([k, v]) => `<button data-act="adminTab" data-v="${k}" aria-pressed="${S.adminTab === k}">${v}</button>`).join('')}</div></div>`;
-  if (S.migrate) html += `<div class="notice" style="border:1px solid var(--warn-ring)"><b>データベースの更新が必要です。</b>Supabase の SQL Editor で、お送りした追加用SQL（migration_002.sql）を1回実行してください。実行するまで、暗証番号・タスク・勤務場所は保存されません。</div>`;
+  if (S.migrate) html += `<div class="notice" style="border:1px solid var(--warn-ring)"><b>データベースの更新が必要です。</b>Supabase の SQL Editor で、お送りした追加用SQL（migration_003.sql）を1回実行してください。実行するまで、暗証番号・タスク・勤務場所・出品表の自動集計は使えません。</div>`;
   if (S.adminTab === 'staff') return html + adminStaff();
   if (!activeStaff().length) return html + `<div class="panel"><div class="empty"><div class="big">まだスタッフが登録されていません</div><div>スタッフ用のリンクかQRコードを配ると、各自が最初に名前を登録します。</div><button class="btn" data-act="adminTab" data-v="staff">リンクとQRコードを見る</button></div></div>`;
   if (S.adminTab === 'att') return html + adminAtt();
@@ -748,7 +772,7 @@ function personCard(s) {
       : `<div class="now" style="font-size:16px;color:var(--muted)">${st === 'done' ? '退勤済' : '状況未入力'}</div>`;
   }
   let prog;
-  if (s.role === 'office') { const T = officeTasks(s.id); prog = `<span>本日のタスク <b class="num" style="color:var(--fg)">${T.todayDone}</b> / ${T.dueToday.length}件</span><span class="num">${pctTxt(T.todayDone, T.dueToday.length)}</span>${bar(T.todayDone, T.dueToday.length)}<span>${T.by.overdue.length ? `<span class="pill bad">期限切れ ${T.by.overdue.length}件</span>` : `未完了 ${T.open}件`}</span>`; }
+  if (s.role === 'office') { const T = officeTasks(s.id); prog = `<span>本日のタスク <b class="num" style="color:var(--fg)">${T.todayDone}</b> / ${T.dueToday.length}件</span><span class="num">${pctTxt(T.todayDone, T.dueToday.length)}</span>${bar(T.todayDone, T.dueToday.length)}<span>${T.by.overdue.length ? `<span class="pill bad">期限切れ ${T.by.overdue.length}件</span>` : `未完了 ${T.open}件`}${s.listingCode ? `・出品 ${autoListed(s.id, x => x === S.date)}品` : ''}</span>`; }
   else if (s.role === 'buyer') { const d = buyerDay(s.id); prog = `<span>粗利 <b class="num" style="color:var(--fg)">${yen(d.profit)}</b> / ${yen(d.target)}</span><span class="num">${pctTxt(d.profit, d.target)}</span>${bar(d.profit, d.target)}<span>アポ ${d.appos.length}件</span>`; }
   else { const d = partDay(s.id); prog = `<span>出品 <b class="num" style="color:var(--fg)">${d.listed}</b> / ${d.target}品</span><span class="num">${pctTxt(d.listed, d.target)}</span>${bar(d.listed, d.target)}<span class="num">作業記録 ${fmtH(d.logged)}</span>`; }
   return `<div class="pcard ${st}" data-act="openPeek" data-id="${s.id}" role="button" tabindex="0" title="${esc(s.name)} さんの画面を開く">
@@ -790,6 +814,13 @@ function adminTasks() {
   html += all.map(({s, T}) => `<div class="panel"><div class="titlerow"><h2>${esc(s.name)}</h2><span class="sub">${roleLbl(s)}・未完了 ${T.open}件</span></div>${taskList(T, true)}</div>`).join('');
   return html;
 }
+function officeListPanel() {
+  const rows = activeStaff().filter(s => s.role === 'office' && s.listingCode);
+  if (!rows.length) return '';
+  return `<div class="panel"><div class="titlerow"><h2>社員（管理）の出品</h2><span class="sub">出品表から自動集計</span></div>
+    <div class="tbl"><table style="min-width:360px"><thead><tr><th>名前</th><th>コード</th><th class="r">本日</th><th class="r">今月</th></tr></thead><tbody>
+    ${rows.map(s => `<tr><td><b>${esc(s.name)}</b></td><td>${esc(s.listingCode)}</td><td class="r num">${autoListed(s.id, x => x === S.date)}品</td><td class="r num">${autoListed(s.id, x => x.slice(0, 7) === month(S.date))}品</td></tr>`).join('')}</tbody></table></div></div>`;
+}
 function adminPerf() {
   const all = activeStaff(), buyers = all.filter(s => s.role === 'buyer'), parts = all.filter(s => s.role === 'part');
   let html = `<div class="panel"><div class="titlerow"><h2>バイヤー</h2><span class="sub">UNISOUND ${yen(TARGET.unisound)}/件・マンション買取 ${yen(TARGET.mansion)}/人</span></div>
@@ -811,6 +842,7 @@ function adminPerf() {
       <td class="num">${bar(d.listed, d.target)}${d.listed}/${d.target}</td><td class="r num">${h('梱包')}</td><td class="r num">${h('発送')}</td><td class="r num">${h('整理')}</td>
       <td class="r num">${pctTxt(m.listed, m.target)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="sub">この店舗のアルバイトはいません。</div>'}</div>`;
   }).join('')}</div>`;
+  html += officeListPanel();
   return html;
 }
 function adminAtt() {
@@ -839,6 +871,8 @@ function adminStaff() {
    <div class="panel"><h2>管理者用のリンク</h2>
     <div class="sub">全員の記録が見られる管理マスターを開くリンクです。スタッフには渡さないでください。</div>
     <div class="copyrow"><input class="input" id="u-admin" readonly value="${esc(S.url + '?admin=' + S.key)}"><button class="btn ghost" data-act="copy" data-target="u-admin">コピー</button></div></div></div>`;
+  html += `<div class="panel"><div class="titlerow"><h2>出品表との連携</h2><span class="pill ${S.listingAt ? 'on' : ''}">${S.listingAt ? '最終反映 ' + new Date(S.listingAt).toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '未接続'}</span></div>
+    <div class="sub">「本社1スタ出品表」（相模原）と「本社1スタ出品表 新山下」（新山下）のB列「出品担当」とO列「出品日」から、10分ごとに出品数を自動集計します（取消・中止/返金は除外）。各スタッフの「出品コード」に担当コードを入れてください（出品もする社員（管理）にも設定できます）。</div></div>`;
   html += `<div class="panel"><div class="titlerow"><h2>個人QRカード（共用スマホ向け）</h2><button class="btn" data-act="cards" data-id="">全員分を表示・印刷</button></div>
     <div class="sub">一人ずつ専用のQRコードです。どのスマホで読み取っても、その人の画面が直接開きます。名前を選ぶ操作がないので選び間違いが起きず、スマホに名前も残りません。共用スマホを使うアルバイトにおすすめです。</div></div>`;
   html += `<div class="panel"><h2>スタッフを追加</h2>
@@ -853,6 +887,7 @@ function adminStaff() {
      ${s.pinHash ? '' : '<span class="pill">番号未設定</span>'}
      <select class="input" style="width:auto" id="sr-${s.id}" data-chg="staffRole" data-id="${s.id}" aria-label="区分">${['buyer', 'office', 'part'].map(x => `<option value="${x}" ${s.role === x ? 'selected' : ''}>${ROLE_NAMES[x]}</option>`).join('')}</select>
      ${s.role === 'part' ? `<select class="input" style="width:auto" id="ss-${s.id}" data-chg="staffStore" data-id="${s.id}" aria-label="店舗">${STORES.map(x => `<option ${s.store === x ? 'selected' : ''}>${x}</option>`).join('')}</select>` : ''}
+     ${s.role !== 'buyer' || s.listingCode ? `<label class="sub" style="display:flex;align-items:center;gap:6px">出品コード<input class="input num" style="width:64px;text-transform:uppercase" id="lc-${s.id}" value="${esc(s.listingCode || '')}" data-chg="listingCode" data-id="${s.id}" maxlength="6" placeholder="例 G"></label>` : ''}
      ${s.role === 'office' ? `<input class="input" style="width:150px" id="so-${s.id}" list="office-places" value="${esc(s.store)}" data-chg="staffStore" data-id="${s.id}" aria-label="拠点" placeholder="拠点">` : ''}
      ${s.pinHash ? confirmBtn('pr-' + s.id, 'resetPin', '番号リセット', 'もう一度押すとリセット', `data-id="${s.id}"`) : ''}
      <button class="link" data-act="cards" data-id="${s.id}">QRカード</button>
@@ -1032,6 +1067,8 @@ document.addEventListener('change', e => {
   } else if (c === 'staffRole') {
     const s = S.staff.find(x => x.id === id);
     call('updateStaff', {id, role: el.value, store: el.value === 'part' ? (STORES.includes(s && s.store) ? s.store : '相模原') : el.value === 'office' ? ((s && s.store) || '本社') : ''}, '区分を変更しました');
+  } else if (c === 'listingCode') {
+    call('setListingCode', {id, code: el.value}, el.value.trim() ? `出品コードを ${normCode(el.value)} にしました` : '出品コードを外しました');
   } else if (c === 'placeText') {
     if (el.value.trim()) call('setPlace', {staffId: id, date: S.date, place: el.value.trim()}, `勤務場所：${el.value.trim()}`);
   } else if (c === 'taskDue') {
