@@ -4,7 +4,9 @@
  * 何を「出品」と数えるか（A・B・C・D・E・N・O列がすべて入力済み など）はアプリ側で判定します。
  * 使い方：setup を1回実行して許可するだけ。以後10分ごとに自動で動きます。
  */
-const SOURCE_SPREADSHEET_ID = '1Io5h_3j-OMGE8qXDqW_fxfdLi3nLsYbLf8zLmpCaKZY';
+// 読み取るファイルは GitHub の設定ファイル（sheet-source.json）で指定。月が変わったら設定ファイルだけ書き換える
+const SOURCE_CONFIG_URL = 'https://raw.githubusercontent.com/clarie-jp/workboard/main/sheet-source.json';
+const FALLBACK_SPREADSHEET_ID = '1Io5h_3j-OMGE8qXDqW_fxfdLi3nLsYbLf8zLmpCaKZY';
 const SOURCES = [
   {sheet: '本社1スタ出品表', store: '相模原'},
   {sheet: '本社1スタ出品表 新山下', store: '新山下'}
@@ -31,7 +33,7 @@ function sync() {
   const prev = m === 1 ? {y: y - 1, m: 12} : {y: y, m: m - 1};
   const months = [ym(prev.y, prev.m), ym(y, m)];
   const letters = 'ABCDEFGHIJKLMNO';
-  const ss = SpreadsheetApp.openById(SOURCE_SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(sourceId());
   const rows = [];
   SOURCES.forEach(src => {
     const sh = ss.getSheetByName(src.sheet);
@@ -54,6 +56,16 @@ function sync() {
   Logger.log('送信しました：' + rows.length + '行（' + months.join('、') + '）');
 }
 
+function sourceId() {
+  try {
+    const res = UrlFetchApp.fetch(SOURCE_CONFIG_URL + '?t=' + Date.now(), {muteHttpExceptions: true});
+    if (res.getResponseCode() === 200) {
+      const cfg = JSON.parse(res.getContentText());
+      if (cfg.spreadsheetId) { Logger.log('読み取るファイル：' + (cfg.name || cfg.spreadsheetId)); return cfg.spreadsheetId; }
+    }
+  } catch (e) { Logger.log('設定ファイルを読めなかったので、前回のファイルを使います'); }
+  return FALLBACK_SPREADSHEET_ID;
+}
 function ym(y, m) { return y + '-' + ('0' + m).slice(-2); }
 function normCode(v) { return String(v || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); }
 /** 「10/15」「2026/10/15」などを yyyy-mm-dd に。年がない場合は今の年（来月より先なら前年） */
