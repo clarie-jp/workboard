@@ -307,7 +307,7 @@ function supabaseDb() {
     async insertIgnore(t, row) { chk(await c.from(t).upsert(row, {onConflict: 'id', ignoreDuplicates: true})); },
     async update(t, id, p) { chk(await c.from(t).update(p).eq('id', id)); },
     async remove(t, id) { chk(await c.from(t).delete().eq('id', id)); },
-    subscribe(cb) { const ch = c.channel('workboard'); TABLES.slice(0, 5).forEach(t => ch.on('postgres_changes', {event: '*', schema: 'public', table: t}, cb)); ch.subscribe(); try { c.channel('workboard-tasks').on('postgres_changes', {event: '*', schema: 'public', table: 'tasks'}, cb).on('postgres_changes', {event: '*', schema: 'public', table: 'listing_counts'}, cb).subscribe(); } catch (e) {} }
+    subscribe(cb) { const ch = c.channel('workboard'); TABLES.slice(0, 5).forEach(t => ch.on('postgres_changes', {event: '*', schema: 'public', table: t}, cb)); ch.subscribe(); try { c.channel('workboard-tasks').on('postgres_changes', {event: '*', schema: 'public', table: 'tasks'}, cb).on('postgres_changes', {event: '*', schema: 'public', table: 'listing_rows'}, cb).subscribe(); } catch (e) {} }
   };
 }
 function localDb() {
@@ -332,7 +332,17 @@ async function loadData() {
   let tasks = [], migrate = !S.demo && staff.length > 0 && !('pin_hash' in staff[0]);
   try { tasks = await db.select('tasks', S.isAdmin ? {} : {staff_id: S.staffId || ZERO}); } catch (e) { migrate = true; }
   let listing = [];
-  try { listing = await db.select('listing_counts', {month: m}); } catch (e) { if (!S.demo) migrate = true; }
+  try {
+    const raw = await db.select('listing_rows', {month: m}), agg = {};
+    raw.forEach(r => {
+      if (!countsAsListing(r)) return;
+      const k = r.store + '_' + r.code + '_' + r.date;
+      agg[k] = agg[k] || {code: r.code, store: r.store, date: r.date, count: 0, updated_at: 0};
+      agg[k].count++; agg[k].updated_at = Math.max(agg[k].updated_at, Number(r.updated_at) || 0);
+    });
+    listing = Object.values(agg);
+    S.listingSyncAt = raw.reduce((x, r) => Math.max(x, Number(r.updated_at) || 0), 0);
+  } catch (e) { if (!S.demo) migrate = true; }
   if (!S.demo && staff.length > 0 && !('listing_code' in staff[0])) migrate = true;
   S.migrate = migrate;
   return {
@@ -348,6 +358,10 @@ async function loadData() {
 }
 const clean = (s, n) => String(s || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, n || 80);
 const normCode = c => String(c || '').normalize('NFKC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+// 出品とみなす条件：出品表のこの列がすべて入力済み（取消・中止/返金は除く）
+const LISTING_REQUIRED_COLS = 'ABCDENO';
+const LISTING_EXCLUDE_STATUS = ['取消', '中止'];
+const countsAsListing = r => !!r.code && [...LISTING_REQUIRED_COLS].every(c => String(r.filled || '').includes(c)) && !LISTING_EXCLUDE_STATUS.some(x => String(r.status || '').startsWith(x));
 const normRole = r => ['buyer', 'office', 'part'].includes(r) ? r : 'part';
 const normStore = (role, st) => role === 'part' ? (STORES.includes(st) ? st : STORES[0]) : role === 'office' ? (clean(st, 30) || '本社') : '';
 async function exec(action, a) {
@@ -415,7 +429,7 @@ async function exec(action, a) {
 function apply(data) {
   S.staff = data.staff || [];
   S.att = (data.att || []).map(a => Object.assign(a, {now: a.nowLabel ? {label: a.nowLabel, since: a.nowSince} : null}));
-  S.logs = data.logs || []; S.appos = data.appos || []; S.tasks = data.tasks || []; S.listing = data.listing || []; S.listingAt = S.listing.reduce((x, r) => Math.max(x, r.updatedAt), 0);
+  S.logs = data.logs || []; S.appos = data.appos || []; S.tasks = data.tasks || []; S.listing = data.listing || []; S.listingAt = S.listingSyncAt || S.listing.reduce((x, r) => Math.max(x, r.updatedAt), 0);
   S.loadedMonth = data.month; S.status = 'ready';
 }
 const errText = e => (e && e.message && /[ぁ-んァ-ン一-龥]/.test(e.message)) ? e.message : '保存できませんでした。通信を確認してもう一度お試しください';
@@ -872,7 +886,7 @@ function adminStaff() {
     <div class="sub">全員の記録が見られる管理マスターを開くリンクです。スタッフには渡さないでください。</div>
     <div class="copyrow"><input class="input" id="u-admin" readonly value="${esc(S.url + '?admin=' + S.key)}"><button class="btn ghost" data-act="copy" data-target="u-admin">コピー</button></div></div></div>`;
   html += `<div class="panel"><div class="titlerow"><h2>出品表との連携</h2><span class="pill ${S.listingAt ? 'on' : ''}">${S.listingAt ? '最終反映 ' + new Date(S.listingAt).toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : '未接続'}</span></div>
-    <div class="sub">「本社1スタ出品表」（相模原）と「本社1スタ出品表 新山下」（新山下）のB列「出品担当」とO列「出品日」から、10分ごとに出品数を自動集計します（取消・中止/返金は除外）。各スタッフの「出品コード」に担当コードを入れてください（出品もする社員（管理）にも設定できます）。</div></div>`;
+    <div class="sub">「本社1スタ出品表」（相模原）と「本社1スタ出品表 新山下」（新山下）で、<b>A・B・C・D・E・N・O列がすべて入力された行</b>を出品1件として、B列「出品担当」・O列「出品日」ごとに10分ごとに自動集計します（取消・中止/返金は除外。あとで消された行は自動で件数から減ります）。各スタッフの「出品コード」に担当コードを入れてください（出品もする社員（管理）にも設定できます）。</div></div>`;
   html += `<div class="panel"><div class="titlerow"><h2>個人QRカード（共用スマホ向け）</h2><button class="btn" data-act="cards" data-id="">全員分を表示・印刷</button></div>
     <div class="sub">一人ずつ専用のQRコードです。どのスマホで読み取っても、その人の画面が直接開きます。名前を選ぶ操作がないので選び間違いが起きず、スマホに名前も残りません。共用スマホを使うアルバイトにおすすめです。</div></div>`;
   html += `<div class="panel"><h2>スタッフを追加</h2>

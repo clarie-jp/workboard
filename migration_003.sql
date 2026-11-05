@@ -47,3 +47,25 @@ do $$ begin
   alter publication supabase_realtime add table listing_counts;
 exception when duplicate_object then null;
 end $$;
+
+-- 出品表の行データ（数え方のルールはアプリ側で判定）
+create table if not exists listing_rows (
+  id text primary key,
+  store text not null,
+  row_no int not null,
+  code text not null default '',
+  date date not null,
+  month text not null,
+  status text not null default '',
+  filled text not null default '',
+  updated_at bigint
+);
+create index if not exists listing_rows_month on listing_rows(month);
+alter table listing_rows enable row level security;
+drop policy if exists open_access on listing_rows;
+create policy open_access on listing_rows for all to anon, authenticated using (true) with check (true);
+grant select, insert, update, delete on listing_rows to anon, authenticated;
+do $$ begin
+  alter publication supabase_realtime add table listing_rows;
+exception when duplicate_object then null;
+end $$;

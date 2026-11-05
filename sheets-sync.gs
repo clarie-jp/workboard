@@ -1,6 +1,7 @@
 /**
  * 買取・出品ワークボード：出品表 → アプリ 自動集計
- * 「2611月 実売データ」の出品表2シートから、出品日×出品担当コードの件数を数えて、アプリに送ります。
+ * 「2611月 実売データ」の出品表2シートの行（出品日が今月・先月のもの）をアプリに送ります。
+ * 何を「出品」と数えるか（A・B・C・D・E・N・O列がすべて入力済み など）はアプリ側で判定します。
  * 使い方：setup を1回実行して許可するだけ。以後10分ごとに自動で動きます。
  */
 const SOURCE_SPREADSHEET_ID = '1Io5h_3j-OMGE8qXDqW_fxfdLi3nLsYbLf8zLmpCaKZY';
@@ -11,7 +12,6 @@ const SOURCES = [
 const COL_CODE = 2;     // B列：出品担当
 const COL_STATUS = 9;   // I列：決済
 const COL_DATE = 15;    // O列：出品日
-const EXCLUDE_STATUS = ['取消', '中止'];
 const SUPABASE_URL = 'https://pgtmijmpuhstddlwbqjq.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_BFYZq-4aCRc4ETS4J2UvLA_cFS_gIdX';
 
@@ -30,31 +30,28 @@ function sync() {
   const m = Number(Utilities.formatDate(now, tz, 'M'));
   const prev = m === 1 ? {y: y - 1, m: 12} : {y: y, m: m - 1};
   const months = [ym(prev.y, prev.m), ym(y, m)];
+  const letters = 'ABCDEFGHIJKLMNO';
   const ss = SpreadsheetApp.openById(SOURCE_SPREADSHEET_ID);
-  const counts = {};
+  const rows = [];
   SOURCES.forEach(src => {
     const sh = ss.getSheetByName(src.sheet);
     if (!sh) { Logger.log('シートが見つかりません：' + src.sheet); return; }
     const last = sh.getLastRow();
     if (last < 2) return;
     const values = sh.getRange(2, 1, last - 1, COL_DATE).getDisplayValues();
-    values.forEach(r => {
-      const code = normCode(r[COL_CODE - 1]);
-      const status = String(r[COL_STATUS - 1]).trim();
+    values.forEach((r, i) => {
       const date = toDate(String(r[COL_DATE - 1]).trim(), y, m);
-      if (!code || !date) return;
-      if (EXCLUDE_STATUS.some(x => status.indexOf(x) === 0)) return;
-      if (months.indexOf(date.slice(0, 7)) < 0) return;
-      const key = src.store + '_' + code + '_' + date;
-      counts[key] = counts[key] || {id: key, store: src.store, code: code, date: date, month: date.slice(0, 7), count: 0, updated_at: now.getTime()};
-      counts[key].count++;
+      if (!date || months.indexOf(date.slice(0, 7)) < 0) return;
+      let filled = '';
+      for (let c = 0; c < letters.length; c++) if (String(r[c]).trim() !== '') filled += letters[c];
+      rows.push({id: src.store + '_' + (i + 2), store: src.store, row_no: i + 2, code: normCode(r[COL_CODE - 1]), date: date, month: date.slice(0, 7),
+        status: String(r[COL_STATUS - 1]).trim().slice(0, 30), filled: filled, updated_at: now.getTime()});
     });
   });
-  const rows = Object.keys(counts).map(k => counts[k]);
-  // 対象月の古い集計を消してから、最新の集計を入れ直す
-  api('delete', '/rest/v1/listing_counts?month=in.(' + months.join(',') + ')');
-  for (let i = 0; i < rows.length; i += 500) api('post', '/rest/v1/listing_counts', rows.slice(i, i + 500));
-  Logger.log('送信しました：' + rows.length + '件（' + months.join('、') + '）');
+  // 対象月の行を入れ直す（シートで消された行・空欄に戻された行は、ここで反映されて件数が減る）
+  api('delete', '/rest/v1/listing_rows?month=in.(' + months.join(',') + ')');
+  for (let i = 0; i < rows.length; i += 500) api('post', '/rest/v1/listing_rows', rows.slice(i, i + 500));
+  Logger.log('送信しました：' + rows.length + '行（' + months.join('、') + '）');
 }
 
 function ym(y, m) { return y + '-' + ('0' + m).slice(-2); }
